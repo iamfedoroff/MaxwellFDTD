@@ -49,6 +49,12 @@ function curl_H!(field::Field1D)
 end
 
 
+function Poynting(field::Field1D)
+    (; Ex, Hy) = field
+    return @. sqrt((Ex*Hy)^2)
+end
+
+
 # ******************************************************************************
 # 2D
 # ******************************************************************************
@@ -194,6 +200,12 @@ function curl_H_kernel!(field::Field2D)
         end
     end
     return nothing
+end
+
+
+function Poynting(field::Field2D)
+    (; Hx, Hy, Ez) = field
+    return @. sqrt((-Ez*Hy)^2 + (Ez*Hx)^2)
 end
 
 
@@ -506,4 +518,10 @@ function curl_H_kernel!(field::Field3D)
     end
 
     return nothing
+end
+
+
+function Poynting(field::Field3D)
+    (; Hx, Hy, Hz, Ex, Ey, Ez) = field
+    return @. sqrt((Ey*Hz - Ez*Hy)^2 + (Ez*Hx - Ex*Hz)^2 + (Ex*Hy - Ey*Hx)^2)
 end
