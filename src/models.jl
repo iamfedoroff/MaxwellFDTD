@@ -2,7 +2,7 @@ abstract type Model end
 
 
 function step!(model, it)
-    (; field, t, add_source!) = model
+    (; field, source, t) = model
 
     # tfsf source:
     # (; mHy2, mEx2, Esrc, Hsrc) = model
@@ -37,7 +37,7 @@ function step!(model, it)
     # Ex[izsrc] += mEx2[izsrc]/dz * Hsrc   # tfsf source
 
     @timeit "add_source" begin
-        add_source!(field, t[it])  # additive source
+        add_source!(field, source, t[it])  # additive source
         synchronize()
     end
 
@@ -90,13 +90,13 @@ struct Model1D{F, T, R, A, S} <: Model
     mHy2 :: A
     mEx1 :: A
     mEx2 :: A
-    add_source! :: S
+    source :: S
 end
 
 @adapt_structure Model1D
 
 
-function Model(field::Field1D; tmax, CN=1, pml_box=(0,0), add_source!)
+function Model(field::Field1D, source; tmax, CN=1, pml_box=(0,0))
     (; grid) = field
     (; dz) = grid
 
@@ -117,7 +117,7 @@ function Model(field::Field1D; tmax, CN=1, pml_box=(0,0), add_source!)
     mEx1 = @. (1 - mEx0) / (1 + mEx0)
     mEx2 = @. C0 * dt / eps / (1 + mEx0)
 
-    return Model1D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, add_source!)
+    return Model1D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, source)
 end
 
 
@@ -157,13 +157,13 @@ struct Model2D{F, T, R, A, S} <: Model
     ICEx :: A
     ICEy :: A
     IEz :: A
-    add_source! :: S
+    source :: S
 end
 
 @adapt_structure Model2D
 
 
-function Model(field::Field2D; tmax, CN=1, pml_box=(0,0,0,0), add_source!)
+function Model(field::Field2D, source; tmax, CN=1, pml_box=(0,0,0,0))
     (; grid) = field
     (; Nx, Ny, dx, dy) = grid
 
@@ -199,7 +199,7 @@ function Model(field::Field2D; tmax, CN=1, pml_box=(0,0,0,0), add_source!)
 
     return Model2D(
         field, Nt, dt, t, mHx1, mHx2, mHx3, mHy1, mHy2, mHy3, mEz1, mEz2, mEz3,
-        ICEx, ICEy, IEz, add_source!,
+        ICEx, ICEy, IEz, source,
     )
 end
 
@@ -282,13 +282,13 @@ struct Model3D{F, T, R, A, S} <: Model
     IEx :: A
     IEy :: A
     IEz :: A
-    add_source! :: S
+    source :: S
 end
 
 @adapt_structure Model3D
 
 
-function Model(field::Field3D; tmax, CN=1, pml_box=(0,0,0,0,0,0), add_source!)
+function Model(field::Field3D, source; tmax, CN=1, pml_box=(0,0,0,0,0,0))
     (; grid) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
@@ -350,7 +350,7 @@ function Model(field::Field3D; tmax, CN=1, pml_box=(0,0,0,0,0,0), add_source!)
         mHx1, mHx2, mHx3, mHx4, mHy1, mHy2, mHy3, mHy4, mHz1, mHz2, mHz3, mHz4,
         mEx1, mEx2, mEx3, mEx4, mEy1, mEy2, mEy3, mEy4, mEz1, mEz2, mEz3, mEz4,
         ICHx, ICHy, ICHz, ICEx, ICEy, ICEz, IHx, IHy, IHz, IEx, IEy, IEz,
-        add_source!,
+        source,
     )
 end
 

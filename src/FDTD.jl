@@ -18,6 +18,7 @@ include("gpu.jl")
 include("grids.jl")
 include("pml.jl")
 include("fields.jl")
+include("sources.jl")
 include("models.jl")
 include("outputs.jl")
 
