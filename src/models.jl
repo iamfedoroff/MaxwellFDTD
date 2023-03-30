@@ -96,9 +96,12 @@ end
 @adapt_structure Model1D
 
 
-function Model(field::Field1D, source; tmax, CN=1, pml_box=(0,0))
+function Model(
+    field::Field1D, source;
+    tmax, CN=1, permittivity=nothing, permeability=nothing, pml_box=(0,0),
+)
     (; grid) = field
-    (; dz) = grid
+    (; dz, z) = grid
 
     dt = CN / C0 / sqrt(1/dz^2)
     Nt = ceil(Int, tmax / dt)
@@ -107,8 +110,16 @@ function Model(field::Field1D, source; tmax, CN=1, pml_box=(0,0))
     sz = pml(grid, pml_box)
     @. sz *= 1 / (2*dt)
 
-    eps = 1
-    mu = 1
+    if isnothing(permittivity)
+        eps = 1
+    else
+        eps = @. permittivity(z)
+    end
+    if isnothing(permeability)
+        mu = 1
+    else
+        mu = @. permeability(z)
+    end
 
     mHy0 = @. sz * dt / 2
     mHy1 = @. (1 - mHy0) / (1 + mHy0)
@@ -163,9 +174,12 @@ end
 @adapt_structure Model2D
 
 
-function Model(field::Field2D, source; tmax, CN=1, pml_box=(0,0,0,0))
+function Model(
+    field::Field2D, source;
+    tmax, CN=1, permittivity=nothing, permeability=nothing, pml_box=(0,0,0,0),
+)
     (; grid) = field
-    (; Nx, Ny, dx, dy) = grid
+    (; Nx, Ny, dx, dy, x, y) = grid
 
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2)
     Nt = ceil(Int, tmax / dt)
@@ -175,8 +189,16 @@ function Model(field::Field2D, source; tmax, CN=1, pml_box=(0,0,0,0))
     @. sx *= 1 / (2*dt)
     @. sy *= 1 / (2*dt)
 
-    eps = 1
-    mu = 1
+    if isnothing(permittivity)
+        eps = 1
+    else
+        eps = [permittivity(x[ix], y[iy]) for ix=1:Nx, iy=1:Ny]
+    end
+    if isnothing(permeability)
+        mu = 1
+    else
+        mu = [permeability(x[ix], y[iy]) for ix=1:Nx, iy=1:Ny]
+    end
 
     # update coefficients:
     mHx0 = @. sy * dt / 2
@@ -288,9 +310,16 @@ end
 @adapt_structure Model3D
 
 
-function Model(field::Field3D, source; tmax, CN=1, pml_box=(0,0,0,0,0,0))
+function Model(
+    field::Field3D, source;
+    tmax,
+    CN=1,
+    permittivity=nothing,
+    permeability=nothing,
+    pml_box=(0,0,0,0,0,0),
+)
     (; grid) = field
-    (; Nx, Ny, Nz, dx, dy, dz) = grid
+    (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
@@ -301,8 +330,16 @@ function Model(field::Field3D, source; tmax, CN=1, pml_box=(0,0,0,0,0,0))
     @. sy *= 1 / (2*dt)
     @. sz *= 1 / (2*dt)
 
-    eps = 1
-    mu = 1
+    if isnothing(permittivity)
+        eps = 1
+    else
+        eps = [permittivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+    if isnothing(permeability)
+        mu = 1
+    else
+        mu = [permeability(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
 
     # update coefficients:
     mHx0 = @. (sy + sz) * dt / 2 + sy * sz * dt^2 / 4
