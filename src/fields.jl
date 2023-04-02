@@ -61,14 +61,14 @@ end
 struct Field2D{G, A} <: Field
     grid :: G
     # magnetic field comonents:
-    Hx :: A
     Hy :: A
     # electric field comonents:
+    Ex :: A
     Ez :: A
     # electric field curl:
-    CEx :: A
     CEy :: A
     # magnetic field curl:
+    CHx :: A
     CHz :: A
 end
 
@@ -76,39 +76,36 @@ end
 
 
 function Field(grid::Grid2D)
-    (; Nx, Ny) = grid
-    Hx, Hy, Ez, CEx, CEy, CHz = (zeros(Nx,Ny) for i=1:6)
-    return Field2D(grid, Hx, Hy, Ez, CEx, CEy, CHz)
+    (; Nx, Nz) = grid
+    Hy, Ex, Ez, CEy, CHx, CHz = (zeros(Nx,Nz) for i=1:6)
+    return Field2D(grid, Hy, Ex, Ez, CEy, CHx, CHz)
 end
 
 
 function curl_E!(field::Field2D)
-    (; grid, Ez, CEx, CEy) = field
-    (; Nx, Ny, dx, dy) = grid
-
-    for iy=1:Ny-1
-        for ix=1:Nx
-            CEx[ix,iy] = (Ez[ix,iy+1] - Ez[ix,iy]) / dy
-        end
-    end
-    for ix=1:Nx
-        CEx[ix,Ny] = (Ez[ix,1] - Ez[ix,Ny]) / dy   # periodic bc
-    end
-
-    for iy=1:Ny
+    (; grid, Ex, Ez, CEy) = field
+    (; Nx, Nz, dx, dz) = grid
+    for iz=1:Nz-1
         for ix=1:Nx-1
-            CEy[ix,iy] = -(Ez[ix+1,iy] - Ez[ix,iy]) / dx
+            CEy[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz -
+                         (Ez[ix+1,iz] - Ez[ix,iz]) / dx
         end
-        CEy[Nx,iy] = -(Ez[1,iy] - Ez[Nx,iy]) / dx   # periodic bc
+        CEy[Nx,iz] = (Ex[Nx,iz+1] - Ex[Nx,iz]) / dz -
+                     (Ez[1,iz] - Ez[Nx,iz]) / dx
     end
-
+    for ix=1:Nx-1
+        CEy[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz -
+                     (Ez[ix+1,Nz] - Ez[ix,Nz]) / dx
+    end
+    CEy[Nx,Nz] = (Ex[Nx,1] - Ex[Nx,Nz]) / dz -
+                 (Ez[1,Nz] - Ez[Nx,Nz]) / dx
     return nothing
 end
 
 
 function curl_E!(field::Field2D{G,A}) where {G,A<:CuArray}
-    (; Ez) = field
-    N = length(Ez)
+    (; Ex) = field
+    N = length(Ex)
     @krun N curl_E_kernel!(field)
     return nothing
 end
@@ -116,49 +113,48 @@ function curl_E_kernel!(field::Field2D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    (; grid, Ez, CEx, CEy) = field
-    (; Nx, Ny, dx, dy) = grid
+    (; grid, Ex, Ez, CEy) = field
+    (; Nx, Nz, dx, dz) = grid
 
-    ci = CartesianIndices(Ez)
+    ci = CartesianIndices(Ex)
     for ici=id:stride:length(ci)
         ix = ci[ici][1]
-        iy = ci[ici][2]
-
-        # x component:
-        if iy == Ny
-            CEx[ix,Ny] = (Ez[ix,1] - Ez[ix,Ny]) / dy   # periodic bc
+        iz = ci[ici][2]
+        if (ix == Nx) && (iz == Nz)
+            CEy[Nx,Nz] = (Ex[Nx,1] - Ex[Nx,Nz]) / dz -
+                         (Ez[1,Nz] - Ez[Nx,Nz]) / dx
+        elseif ix == Nx
+            CEy[Nx,iz] = (Ex[Nx,iz+1] - Ex[Nx,iz]) / dz -
+                         (Ez[1,iz] - Ez[Nx,iz]) / dx
+        elseif iz == Nz
+            CEy[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz -
+                         (Ez[ix+1,Nz] - Ez[ix,Nz]) / dx
         else
-            CEx[ix,iy] = (Ez[ix,iy+1] - Ez[ix,iy]) / dy
-        end
-
-        # y component:
-        if ix == Nx
-            CEy[Nx,iy] = -(Ez[1,iy] - Ez[Nx,iy]) / dx   # periodic bc
-        else
-            CEy[ix,iy] = -(Ez[ix+1,iy] - Ez[ix,iy]) / dx
+            CEy[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz -
+                         (Ez[ix+1,iz] - Ez[ix,iz]) / dx
         end
     end
-
     return nothing
 end
 
 
 function curl_H!(field::Field2D)
-    (; grid, Hx, Hy, CHz) = field
-    (; Nx, Ny, dx, dy) = grid
+    (; grid, Hy, CHx, CHz) = field
+    (; Nx, Nz, dx, dz) = grid
 
-    CHz[1,1] = (Hy[1,1] - Hy[Nx,1]) / dx -
-               (Hx[1,1] - Hx[1,Ny]) / dy   # periodic bc
-    for ix=2:Nx
-        CHz[ix,1] = (Hy[ix,1] - Hy[ix-1,1]) / dx -
-                    (Hx[ix,1] - Hx[ix,Ny]) / dy   # periodic bc
+    for ix=1:Nx
+        CHx[ix,1] = -(Hy[ix,1] - Hy[ix,Nz]) / dz
     end
-    for iy=2:Ny
-        CHz[1,iy] = (Hy[1,iy] - Hy[Nx,iy]) / dx -
-                    (Hx[1,iy] - Hx[1,iy-1]) / dy   # periodic bc
+    for iz=2:Nz
+        for ix=1:Nx
+            CHx[ix,iz] = -(Hy[ix,iz] - Hy[ix,iz-1]) / dz
+        end
+    end
+
+    for iz=1:Nz
+        CHz[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
         for ix=2:Nx
-            CHz[ix,iy] = (Hy[ix,iy] - Hy[ix-1,iy]) / dx -
-                         (Hx[ix,iy] - Hx[ix,iy-1]) / dy
+            CHz[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
         end
     end
 
@@ -167,8 +163,8 @@ end
 
 
 function curl_H!(field::Field2D{G,A}) where {G,A<:CuArray}
-    (; Hx) = field
-    N = length(Hx)
+    (; Hy) = field
+    N = length(Hy)
     @krun N curl_H_kernel!(field)
     return nothing
 end
@@ -176,27 +172,24 @@ function curl_H_kernel!(field::Field2D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    (; grid, Hx, Hy, CHz) = field
-    (; Nx, Ny, dx, dy) = grid
+    (; grid, Hy, CHx, CHz) = field
+    (; Nx, Nz, dx, dz) = grid
 
-    ci = CartesianIndices(Hx)
+    ci = CartesianIndices(Hy)
     for ici=id:stride:length(ci)
         ix = ci[ici][1]
-        iy = ci[ici][2]
+        iz = ci[ici][2]
 
-        # z component:
-        if (ix == 1) && (iy == 1)
-            CHz[1,1] = (Hy[1,1] - Hy[Nx,1]) / dx -
-                       (Hx[1,1] - Hx[1,Ny]) / dy   # periodic bc
-        elseif ix == 1
-            CHz[1,iy] = (Hy[1,iy] - Hy[Nx,iy]) / dx -
-                        (Hx[1,iy] - Hx[1,iy-1]) / dy   # periodic bc
-        elseif iy == 1
-            CHz[ix,1] = (Hy[ix,1] - Hy[ix-1,1]) / dx -
-                        (Hx[ix,1] - Hx[ix,Ny]) / dy   # periodic bc
+        if iz == 1
+            CHx[ix,1] = -(Hy[ix,1] - Hy[ix,Nz]) / dz
         else
-            CHz[ix,iy] = (Hy[ix,iy] - Hy[ix-1,iy]) / dx -
-                         (Hx[ix,iy] - Hx[ix,iy-1]) / dy
+            CHx[ix,iz] = -(Hy[ix,iz] - Hy[ix,iz-1]) / dz
+        end
+
+        if ix == 1
+            CHz[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
+        else
+            CHz[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
         end
     end
     return nothing
@@ -204,8 +197,8 @@ end
 
 
 function Poynting(field::Field2D)
-    (; Hx, Hy, Ez) = field
-    return @. sqrt((-Ez*Hy)^2 + (Ez*Hx)^2)
+    (; Hy, Ex, Ez) = field
+    return @. sqrt((-Ez*Hy)^2 + (Ex*Hy)^2)
 end
 
 

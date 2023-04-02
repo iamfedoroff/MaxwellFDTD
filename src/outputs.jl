@@ -77,26 +77,26 @@ end
 
 
 # ******************************************************************************
-# 2D: d/dz = 0,   (Hx, Hy, Ez)
+# 2D: d/dy = 0,   (Hy, Ex, Ez)
 # ******************************************************************************
 function prepare_output!(fp, Ntout, grid::Grid2D{T}) where T
-    (; Nx, Ny, x, y) = grid
+    (; Nx, Nz, x, z) = grid
     fp["x"] = collect(x)
-    fp["y"] = collect(y)
-    HDF5.create_dataset(fp, "Hx", T, (Nx, Ny, Ntout))
-    HDF5.create_dataset(fp, "Hy", T, (Nx, Ny, Ntout))
-    HDF5.create_dataset(fp, "Ez", T, (Nx, Ny, Ntout))
+    fp["z"] = collect(z)
+    HDF5.create_dataset(fp, "Hy", T, (Nx, Nz, Ntout))
+    HDF5.create_dataset(fp, "Ex", T, (Nx, Nz, Ntout))
+    HDF5.create_dataset(fp, "Ez", T, (Nx, Nz, Ntout))
     return nothing
 end
 
 
 function write_output!(out, model::Model2D)
     (; field) = model
-    (; Hx, Hy, Ez) = field
+    (; Hy, Ex, Ez) = field
     (; fname, itout) = out
     HDF5.h5open(fname, "r+") do fp
-        fp["Hx"][:,:,itout] = collect(Hx)
         fp["Hy"][:,:,itout] = collect(Hy)
+        fp["Ex"][:,:,itout] = collect(Ex)
         fp["Ez"][:,:,itout] = collect(Ez)
     end
     return nothing

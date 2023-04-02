@@ -172,10 +172,10 @@ struct Model2D{F, T, R, A, S} <: Model
     Nt :: Int
     dt :: T
     t :: R
-    mHx1 :: A
-    mHx2 :: A
     mHy1 :: A
     mHy2 :: A
+    mEx1 :: A
+    mEx2 :: A
     mEz1 :: A
     mEz2 :: A
     source :: S
@@ -186,59 +186,70 @@ end
 
 function Model(
     field::Field2D, source;
-    tmax, CN=1, permittivity=nothing, permeability=nothing, pml_box=(0,0,0,0),
+    tmax, CN=1, permittivity=nothing, permeability=nothing,
+    econductivity=nothing, mconductivity=nothing, pml_box=(0,0,0,0),
 )
     (; grid) = field
-    (; Nx, Ny, dx, dy, x, y) = grid
+    (; Nx, Nz, dx, dz, x, z) = grid
 
-    dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2)
+    dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
-    sx, sy = pml(grid, pml_box)
+    sx, sz = pml(grid, pml_box)
     @. sx *= 1 / (2*dt)
-    @. sy *= 1 / (2*dt)
+    @. sz *= 1 / (2*dt)
 
     if isnothing(permittivity)
         eps = 1
     else
-        eps = [permittivity(x[ix], y[iy]) for ix=1:Nx, iy=1:Ny]
+        eps = [permittivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
     end
     if isnothing(permeability)
         mu = 1
     else
-        mu = [permeability(x[ix], y[iy]) for ix=1:Nx, iy=1:Ny]
+        mu = [permeability(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+    end
+    if isnothing(econductivity)
+        esigma = 0
+    else
+        esigma = [econductivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+    end
+    if isnothing(mconductivity)
+        msigma = 0
+    else
+        msigma = [mconductivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
     end
 
     # update coefficients:
-    mHx0 = @. sy * dt / 2
-    mHx1 = @. (1 - mHx0) / (1 + mHx0)
-    mHx2 = @. -C0 * dt / mu / (1 + mHx0)
-
-    mHy0 = @. sx * dt / 2
+    mHy0 = @. (sx + sz + msigma/(MU0*mu)) * dt/2 + sx*sz*dt^2 / 4
     mHy1 = @. (1 - mHy0) / (1 + mHy0)
-    mHy2 = @. -C0 * dt / mu / (1 + mHy0)
+    mHy2 = @. -dt/(MU0*mu) / (1 + mHy0)
 
-    mEz0 = @. (sx + sy) * dt / 2 + sx * sy * dt^2 / 4
+    mEx0 = @. (sz + esigma/(EPS0*eps)) * dt/2 + sx*esigma*dt^2 / (4*EPS0*eps)
+    mEx1 = @. (1 - mEx0) / (1 + mEx0)
+    mEx2 = @. dt/(EPS0*eps) / (1 + mEx0)
+
+    mEz0 = @. (sx + esigma/(EPS0*eps)) * dt/2 + sz*esigma*dt^2 / (4*EPS0*eps)
     mEz1 = @. (1 - mEz0) / (1 + mEz0)
-    mEz2 = @. C0 * dt / eps / (1 + mEz0)
+    mEz2 = @. dt/(EPS0*eps) / (1 + mEz0)
 
-    return Model2D(field, Nt, dt, t, mHx1, mHx2, mHy1, mHy2, mEz1, mEz2, source)
+    return Model2D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, mEz1, mEz2, source)
 end
 
 
 function update_H!(model::Model2D)
-    (; field, mHx1, mHx2, mHy1, mHy2) = model
-    (; Hx, Hy, CEx, CEy) = field
-    @. Hx = mHx1 * Hx + mHx2 * CEx
+    (; field, mHy1, mHy2) = model
+    (; Hy, CEy) = field
     @. Hy = mHy1 * Hy + mHy2 * CEy
     return nothing
 end
 
 
 function update_E!(model::Model2D)
-    (; field, mEz1, mEz2) = model
-    (; Ez, CHz) = field
+    (; field, mEx1, mEx2, mEz1, mEz2) = model
+    (; Ex, Ez, CHx, CHz) = field
+    @. Ex = mEx1 * Ex + mEx2 * CHx
     @. Ez = mEz1 * Ez + mEz2 * CHz
     return nothing
 end
