@@ -137,12 +137,12 @@ function Model(
         msigma = @. mconductivity(z*zu)
     end
 
-    mHy0 = @. (sz + msigma / (MU0 * mu)) * dt / 2 * tu
+    mHy0 = @. (sz + msigma/(MU0*mu)) * dt/2 * tu
     mHy1 = @. (1 - mHy0) / (1 + mHy0)
-    mHy2 = @. -dt / (MU0 * mu) / (1 + mHy0) * tu * Eu / (zu * Hu)
-    mEx0 = @. (sz + esigma / (EPS0 * eps)) * dt / 2 * tu
+    mHy2 = @. -dt/(MU0*mu) / (1 + mHy0) * tu*Eu / (zu*Hu)
+    mEx0 = @. (sz + esigma/(EPS0*eps)) * dt/2 * tu
     mEx1 = @. (1 - mEx0) / (1 + mEx0)
-    mEx2 = @. dt / (EPS0 * eps) / (1 + mEx0) * tu * Hu / (zu * Eu)
+    mEx2 = @. dt/(EPS0*eps) / (1 + mEx0) * tu*Hu / (zu*Eu)
 
     return Model1D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, source)
 end
