@@ -98,12 +98,18 @@ end
 
 function Model(
     field::Field1D, source;
-    tmax, CN=1, permittivity=nothing, permeability=nothing, pml_box=(0,0),
+    tmax, CN=1, permittivity=nothing, permeability=nothing,
+    econductivity=nothing, mconductivity=nothing, pml_box=(0,0),
 )
     (; grid) = field
     (; dz, z) = grid
 
-    dt = CN / C0 / sqrt(1/dz^2)
+    tu = 1   # does not work for values which are different from 1
+    zu = 1
+    Eu = 1
+    Hu = sqrt(EPS0 / MU0)
+
+    dt = CN / C0 / sqrt(1/(dz*zu)^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
@@ -113,20 +119,30 @@ function Model(
     if isnothing(permittivity)
         eps = 1
     else
-        eps = @. permittivity(z)
+        eps = @. permittivity(z*zu)
     end
     if isnothing(permeability)
         mu = 1
     else
-        mu = @. permeability(z)
+        mu = @. permeability(z*zu)
+    end
+    if isnothing(econductivity)
+        esigma = 0
+    else
+        esigma = @. econductivity(z*zu)
+    end
+    if isnothing(mconductivity)
+        msigma = 0
+    else
+        msigma = @. mconductivity(z*zu)
     end
 
-    mHy0 = @. sz * dt / 2
+    mHy0 = @. (sz + msigma / (MU0 * mu)) * dt / 2 * tu
     mHy1 = @. (1 - mHy0) / (1 + mHy0)
-    mHy2 = @. -C0 * dt / mu / (1 + mHy0)
-    mEx0 = @. sz * dt / 2
+    mHy2 = @. -dt / (MU0 * mu) / (1 + mHy0) * tu * Eu / (zu * Hu)
+    mEx0 = @. (sz + esigma / (EPS0 * eps)) * dt / 2 * tu
     mEx1 = @. (1 - mEx0) / (1 + mEx0)
-    mEx2 = @. C0 * dt / eps / (1 + mEx0)
+    mEx2 = @. dt / (EPS0 * eps) / (1 + mEx0) * tu * Hu / (zu * Eu)
 
     return Model1D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, source)
 end
