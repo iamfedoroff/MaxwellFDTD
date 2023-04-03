@@ -102,11 +102,9 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
-    econductivity=nothing,
-    mconductivity=nothing,
     pml_box=(0,0),
 )
-    (; grid) = field
+    (; grid, w0) = field
     (; dz, z) = grid
 
     tu = 1   # does not work for values which are different from 1
@@ -123,23 +121,19 @@ function Model(
 
     if isnothing(permittivity)
         eps = 1
+        esigma = 0
     else
-        eps = @. permittivity(z*zu)
+        tmp = @. permittivity(z*zu)
+        eps = @. real(tmp)
+        esigma = @. EPS0 * w0 * imag(tmp)
     end
     if isnothing(permeability)
         mu = 1
-    else
-        mu = @. permeability(z*zu)
-    end
-    if isnothing(econductivity)
-        esigma = 0
-    else
-        esigma = @. econductivity(z*zu)
-    end
-    if isnothing(mconductivity)
         msigma = 0
     else
-        msigma = @. mconductivity(z*zu)
+        tmp = @. permeability(z*zu)
+        mu = @. real(tmp)
+        msigma = @. MU0 * w0 * imag(tmp)
     end
 
     mHy0 = @. (sz + msigma/(MU0*mu)) * dt/2 * tu
@@ -195,11 +189,9 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
-    econductivity=nothing,
-    mconductivity=nothing,
     pml_box=(0,0,0,0),
 )
-    (; grid) = field
+    (; grid, w0) = field
     (; Nx, Nz, dx, dz, x, z) = grid
 
     dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
@@ -212,23 +204,19 @@ function Model(
 
     if isnothing(permittivity)
         eps = 1
+        esigma = 0
     else
-        eps = [permittivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+        tmp = [permittivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+        eps = @. real(tmp)
+        esigma = @. EPS0 * w0 * imag(tmp)
     end
     if isnothing(permeability)
         mu = 1
-    else
-        mu = [permeability(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
-    end
-    if isnothing(econductivity)
-        esigma = 0
-    else
-        esigma = [econductivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
-    end
-    if isnothing(mconductivity)
         msigma = 0
     else
-        msigma = [mconductivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+        tmp = [permeability(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+        mu = @. real(tmp)
+        msigma = @. MU0 * w0 * imag(tmp)
     end
 
     # update coefficients:
@@ -297,11 +285,9 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
-    econductivity=nothing,
-    mconductivity=nothing,
     pml_box=(0,0,0,0,0,0),
 )
-    (; grid) = field
+    (; grid, w0) = field
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
@@ -315,25 +301,19 @@ function Model(
 
     if isnothing(permittivity)
         eps = 1
+        esigma = 0
     else
-        eps = [permittivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        tmp = [permittivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        eps = @. real(tmp)
+        esigma = @. EPS0 * w0 * imag(tmp)
     end
     if isnothing(permeability)
         mu = 1
-    else
-        mu = [permeability(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    end
-    if isnothing(econductivity)
-        esigma = 0
-    else
-        esigma =
-            [econductivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    end
-    if isnothing(mconductivity)
         msigma = 0
     else
-        msigma =
-            [mconductivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        tmp = [permeability(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        mu = @. real(tmp)
+        msigma = @. MU0 * w0 * imag(tmp)
     end
 
     # update coefficients:

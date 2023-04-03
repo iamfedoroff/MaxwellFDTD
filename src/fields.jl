@@ -3,8 +3,9 @@ abstract type Field end
 # ******************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************
-struct Field1D{G, A} <: Field
+struct Field1D{G, T, A} <: Field
     grid :: G
+    w0 :: T
     # magnetic field comonents:
     Hy :: A
     # electric field comonents:
@@ -18,10 +19,10 @@ end
 @adapt_structure Field1D
 
 
-function Field(grid::Grid1D)
+function Field(grid::Grid1D; w0)
     (; Nz) = grid
     Hy, Ex, CEy, CHx = (zeros(Nz) for i=1:4)
-    return Field1D(grid, Hy, Ex, CEy, CHx)
+    return Field1D(grid, w0, Hy, Ex, CEy, CHx)
 end
 
 
@@ -58,8 +59,9 @@ end
 # ******************************************************************************
 # 2D
 # ******************************************************************************
-struct Field2D{G, A} <: Field
+struct Field2D{G, T, A} <: Field
     grid :: G
+    w0 :: T
     # magnetic field comonents:
     Hy :: A
     # electric field comonents:
@@ -75,10 +77,10 @@ end
 @adapt_structure Field2D
 
 
-function Field(grid::Grid2D)
+function Field(grid::Grid2D; w0)
     (; Nx, Nz) = grid
     Hy, Ex, Ez, CEy, CHx, CHz = (zeros(Nx,Nz) for i=1:6)
-    return Field2D(grid, Hy, Ex, Ez, CEy, CHx, CHz)
+    return Field2D(grid, w0, Hy, Ex, Ez, CEy, CHx, CHz)
 end
 
 
@@ -103,7 +105,7 @@ function curl_E!(field::Field2D)
 end
 
 
-function curl_E!(field::Field2D{G,A}) where {G,A<:CuArray}
+function curl_E!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
     (; Ex) = field
     N = length(Ex)
     @krun N curl_E_kernel!(field)
@@ -162,7 +164,7 @@ function curl_H!(field::Field2D)
 end
 
 
-function curl_H!(field::Field2D{G,A}) where {G,A<:CuArray}
+function curl_H!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
     (; Hy) = field
     N = length(Hy)
     @krun N curl_H_kernel!(field)
@@ -205,8 +207,9 @@ end
 # ******************************************************************************
 # 3D
 # ******************************************************************************
-struct Field3D{G, A} <: Field
+struct Field3D{G, T, A} <: Field
     grid :: G
+    w0 :: T
     # magnetic field comonents:
     Hx :: A
     Hy :: A
@@ -228,11 +231,13 @@ end
 @adapt_structure Field3D
 
 
-function Field(grid::Grid3D)
+function Field(grid::Grid3D; w0)
     (; Nx, Ny, Nz) = grid
     Hx, Hy, Hz, Ex, Ey, Ez = (zeros(Nx,Ny,Nz) for i=1:6)
     CEx, CEy, CEz, CHx, CHy, CHz = (zeros(Nx,Ny,Nz) for i=1:6)
-    return Field3D(grid, Hx, Hy, Hz, Ex, Ey, Ez, CEx, CEy, CEz, CHx, CHy, CHz)
+    return Field3D(
+        grid, w0, Hx, Hy, Hz, Ex, Ey, Ez, CEx, CEy, CEz, CHx, CHy, CHz,
+    )
 end
 
 
@@ -306,7 +311,7 @@ function curl_E!(field::Field3D)
 end
 
 
-function curl_E!(field::Field3D{G,A}) where {G,A<:CuArray}
+function curl_E!(field::Field3D{G,T,A}) where {G,T,A<:CuArray}
     (; Ex) = field
     N = length(Ex)
     @krun N curl_E_kernel!(field)
@@ -445,7 +450,7 @@ function curl_H!(field::Field3D)
 end
 
 
-function curl_H!(field::Field3D{G,A}) where {G,A<:CuArray}
+function curl_H!(field::Field3D{G,T,A}) where {G,T,A<:CuArray}
     (; Hx) = field
     N = length(Hx)
     @krun N curl_H_kernel!(field)
