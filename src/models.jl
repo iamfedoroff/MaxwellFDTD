@@ -98,8 +98,13 @@ end
 
 function Model(
     field::Field1D, source;
-    tmax, CN=1, permittivity=nothing, permeability=nothing,
-    econductivity=nothing, mconductivity=nothing, pml_box=(0,0),
+    tmax,
+    CN=1,
+    permittivity=nothing,
+    permeability=nothing,
+    econductivity=nothing,
+    mconductivity=nothing,
+    pml_box=(0,0),
 )
     (; grid) = field
     (; dz, z) = grid
@@ -186,8 +191,13 @@ end
 
 function Model(
     field::Field2D, source;
-    tmax, CN=1, permittivity=nothing, permeability=nothing,
-    econductivity=nothing, mconductivity=nothing, pml_box=(0,0,0,0),
+    tmax,
+    CN=1,
+    permittivity=nothing,
+    permeability=nothing,
+    econductivity=nothing,
+    mconductivity=nothing,
+    pml_box=(0,0,0,0),
 )
     (; grid) = field
     (; Nx, Nz, dx, dz, x, z) = grid
@@ -287,6 +297,8 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
+    econductivity=nothing,
+    mconductivity=nothing,
     pml_box=(0,0,0,0,0,0),
 )
     (; grid) = field
@@ -311,32 +323,49 @@ function Model(
     else
         mu = [permeability(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     end
+    if isnothing(econductivity)
+        esigma = 0
+    else
+        esigma =
+            [econductivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+    if isnothing(mconductivity)
+        msigma = 0
+    else
+        msigma =
+            [mconductivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
 
     # update coefficients:
-    mHx0 = @. (sy + sz) * dt / 2 + sy * sz * dt^2 / 4
+    mHx0 = @. (sy + sz + msigma / (MU0 * mu)) * dt / 2 +
+              (sy * sz + sx * msigma / (MU0 * mu)) * dt^2 / 4
     mHx1 = @. (1 - mHx0) / (1 + mHx0)
-    mHx2 = @. -C0 * dt / mu / (1 + mHx0)
+    mHx2 = @. -dt / (MU0 * mu) / (1 + mHx0)
 
-    mHy0 = @. (sx + sz) * dt / 2 + sx * sz * dt^2 / 4
+    mHy0 = @. (sx + sz + msigma / (MU0 * mu)) * dt / 2 +
+              (sx * sz + sy * msigma / (MU0 * mu)) * dt^2 / 4
     mHy1 = @. (1 - mHy0) / (1 + mHy0)
-    mHy2 = @. -C0 * dt / mu / (1 + mHy0)
+    mHy2 = @. -dt / (MU0 * mu) / (1 + mHy0)
 
-    mHz0 = @. (sx + sy) * dt / 2 + sx * sy * dt^2 / 4
+    mHz0 = @. (sx + sy + msigma / (MU0 * mu)) * dt / 2 +
+              (sx * sy + sz * msigma / (MU0 * mu)) * dt^2 / 4
     mHz1 = @. (1 - mHz0) / (1 + mHz0)
-    mHz2 = @. -C0 * dt / mu / (1 + mHz0)
+    mHz2 = @. -dt / (MU0 * mu) / (1 + mHz0)
 
-    mEx0 = @. (sy + sz) * dt / 2 + sy * sz * dt^2 / 4
+    mEx0 = @. (sy + sz + esigma / (EPS0 * eps)) * dt / 2 +
+              (sy * sz + sx * esigma / (EPS0 * eps)) * dt^2 / 4
     mEx1 = @. (1 - mEx0) / (1 + mEx0)
-    mEx2 = @. C0 * dt / eps / (1 + mEx0)
+    mEx2 = @. dt / (EPS0 * eps) / (1 + mEx0)
 
-    mEy0 = @. (sx + sz) * dt / 2 + sx * sz * dt^2 / 4
+    mEy0 = @. (sx + sz + esigma / (EPS0 * eps)) * dt / 2 +
+              (sx * sz + sy * esigma / (EPS0 * eps)) * dt^2 / 4
     mEy1 = @. (1 - mEy0) / (1 + mEy0)
-    mEy2 = @. C0 * dt / eps / (1 + mEy0)
+    mEy2 = @. dt / (EPS0 * eps) / (1 + mEy0)
 
-    mEz0 = @. (sx + sy) * dt / 2 + sx * sy * dt^2 / 4
+    mEz0 = @. (sx + sy + esigma / (EPS0 * eps)) * dt / 2 +
+              (sx * sy + sz * esigma / (EPS0 * eps)) * dt^2 / 4
     mEz1 = @. (1 - mEz0) / (1 + mEz0)
-    mEz2 = @. C0 * dt / eps / (1 + mEz0)
-
+    mEz2 = @. dt / (EPS0 * eps) / (1 + mEz0)
 
     return Model3D(
         field, Nt, dt, t,
