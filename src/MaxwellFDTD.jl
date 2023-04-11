@@ -1,4 +1,4 @@
-module FDTD
+module MaxwellFDTD
 
 import Adapt: adapt_storage, @adapt_structure, adapt
 import CUDA: CUDA, CuArray, @cuda, launch_configuration, synchronize, threadIdx,

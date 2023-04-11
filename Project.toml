@@ -1,5 +1,5 @@
-name = "FDTD"
-uuid = "57d92ce9-77a6-4d56-8ee1-2324d64bc707"
+name = "MaxwellFDTD"
+uuid = "852000f0-0130-468e-b3cd-a35039d130a3"
 authors = ["iamfedoroff <iamfedoroff@gmail.com>"]
 version = "0.1.0"
 

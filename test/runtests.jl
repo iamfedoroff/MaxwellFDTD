@@ -1,2 +1,2 @@
-import FDTD
+import MaxwellFDTD
 using Test
