@@ -102,6 +102,7 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
+    smooth_interfaces=true,
     pml_box=(0,0),
 )
     (; grid, w0) = field
@@ -124,6 +125,9 @@ function Model(
         esigma = 0
     else
         tmp = @. permittivity(z*zu)
+        if smooth_interfaces
+            tmp = moving_average(tmp, 2)
+        end
         eps = @. real(tmp)
         esigma = @. EPS0 * w0 * imag(tmp)
     end
@@ -132,6 +136,9 @@ function Model(
         msigma = 0
     else
         tmp = @. permeability(z*zu)
+        if smooth_interfaces
+            tmp = moving_average(tmp, 2)
+        end
         mu = @. real(tmp)
         msigma = @. MU0 * w0 * imag(tmp)
     end
@@ -189,6 +196,7 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
+    smooth_interfaces=true,
     pml_box=(0,0,0,0),
 )
     (; grid, w0) = field
@@ -207,6 +215,9 @@ function Model(
         esigma = 0
     else
         tmp = [permittivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+        if smooth_interfaces
+            tmp = moving_average(tmp, 2)
+        end
         eps = @. real(tmp)
         esigma = @. EPS0 * w0 * imag(tmp)
     end
@@ -215,6 +226,9 @@ function Model(
         msigma = 0
     else
         tmp = [permeability(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+        if smooth_interfaces
+            tmp = moving_average(tmp, 2)
+        end
         mu = @. real(tmp)
         msigma = @. MU0 * w0 * imag(tmp)
     end
@@ -285,6 +299,7 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
+    smooth_interfaces=true,
     pml_box=(0,0,0,0,0,0),
 )
     (; grid, w0) = field
@@ -304,6 +319,9 @@ function Model(
         esigma = 0
     else
         tmp = [permittivity(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        if smooth_interfaces
+            tmp = moving_average(tmp, 2)
+        end
         eps = @. real(tmp)
         esigma = @. EPS0 * w0 * imag(tmp)
     end
@@ -312,6 +330,9 @@ function Model(
         msigma = 0
     else
         tmp = [permeability(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        if smooth_interfaces
+            tmp = moving_average(tmp, 2)
+        end
         mu = @. real(tmp)
         msigma = @. MU0 * w0 * imag(tmp)
     end
@@ -374,4 +395,29 @@ function update_E!(model::Model3D)
     @. Ey = mEy1 * Ey + mEy2 * CHy
     @. Ez = mEz1 * Ez + mEz2 * CHz
     return nothing
+end
+
+
+# ******************************************************************************
+# Util
+# ******************************************************************************
+# https://julialang.org/blog/2016/02/iteration/#a_multidimensional_boxcar_filter
+function moving_average(A::AbstractArray, m::Int)
+    if eltype(A) == Int
+        out = zeros(size(A))
+    else
+        out = similar(A)
+    end
+    R = CartesianIndices(A)
+    Ifirst, Ilast = first(R), last(R)
+    I1 = div(m,2) * oneunit(Ifirst)
+    for I in R
+        n, s = 0, zero(eltype(out))
+        for J in max(Ifirst, I-I1):min(Ilast, I+I1)
+            s += A[J]
+            n += 1
+        end
+        out[I] = s/n
+    end
+    return out
 end
