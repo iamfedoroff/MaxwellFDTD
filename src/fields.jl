@@ -11,9 +11,9 @@ struct Field1D{G, T, A} <: Field
     # electric field comonents:
     Ex :: A
     # electric field curl:
-    CEy :: A
+    dExz :: A
     # magnetic field curl:
-    CHx :: A
+    dHyz :: A
 end
 
 @adapt_structure Field1D
@@ -21,30 +21,28 @@ end
 
 function Field(grid::Grid1D; w0)
     (; Nz) = grid
-    Hy, Ex, CEy, CHx = (zeros(Nz) for i=1:4)
-    return Field1D(grid, w0, Hy, Ex, CEy, CHx)
+    Hy, Ex, dExz, dHyz = (zeros(Nz) for i=1:4)
+    return Field1D(grid, w0, Hy, Ex, dExz, dHyz)
 end
 
 
-function curl_E!(field::Field1D)
-    (; grid, Ex, CEy) = field
+function derivative_Ex_z!(field::Field1D)
+    (; grid, Ex, dExz) = field
     (; Nz, dz) = grid
     for iz=1:Nz-1
-        CEy[iz] = (Ex[iz+1] - Ex[iz]) / dz
+        dExz[iz] = (Ex[iz+1] - Ex[iz]) / dz
     end
-    CEy[Nz] = (Ex[1] - Ex[Nz]) / dz   # periodic bc
-    # CEy[Nz] = (0 - Ex[Nz]) / dz   # perfect electric conductor bc
+    dExz[Nz] = (Ex[1] - Ex[Nz]) / dz   # periodic bc
     return nothing
 end
 
 
-function curl_H!(field::Field1D)
-    (; grid, Hy, CHx) = field
+function derivative_Hy_z!(field::Field1D)
+    (; grid, Hy, dHyz) = field
     (; Nz, dz) = grid
-    CHx[1] = -(Hy[1] - Hy[Nz]) / dz   # periodic bc
-    # CHx[1] = (Hy[1] - 0) / dz   # perfect magnetic reflector bc
+    dHyz[1] = (Hy[1] - Hy[Nz]) / dz   # periodic bc
     for iz=2:Nz
-        CHx[iz] = -(Hy[iz] - Hy[iz-1]) / dz
+        dHyz[iz] = (Hy[iz] - Hy[iz-1]) / dz
     end
     return nothing
 end

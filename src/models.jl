@@ -81,16 +81,19 @@ end
 # ******************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************
-struct Model1D{F, T, R, A, S} <: Model
+struct Model1D{F, S, T, R, A} <: Model
     field :: F
+    source :: S
     Nt :: Int
     dt :: T
     t :: R
-    mHy1 :: A
-    mHy2 :: A
-    mEx1 :: A
-    mEx2 :: A
-    source :: S
+    Mh :: T
+    Me :: T
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
 end
 
 @adapt_structure Model1D
@@ -105,67 +108,59 @@ function Model(
     smooth_interfaces=true,
     pml_box=(0,0),
 )
-    (; grid, w0) = field
-    (; dz, z) = grid
+    (; grid) = field
+    (; Nz, dz, z) = grid
 
-    tu = 1   # does not work for values which are different from 1
-    zu = 1
-    Eu = 1
-    Hu = sqrt(EPS0 / MU0)
-
-    dt = CN / C0 / sqrt(1/(dz*zu)^2)
+    dt = CN / C0 / sqrt(1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
-    sz = pml(grid, pml_box)
-    @. sz *= 1 / (2*dt)
+    Kz, Az, Bz = pml(z, pml_box, dt)
 
-    if isnothing(permittivity)
-        eps = 1
-        esigma = 0
-    else
-        tmp = @. permittivity(z*zu)
-        if smooth_interfaces
-            tmp = moving_average(tmp, 2)
-        end
-        eps = @. real(tmp)
-        esigma = @. EPS0 * w0 * imag(tmp)
-    end
-    if isnothing(permeability)
-        mu = 1
-        msigma = 0
-    else
-        tmp = @. permeability(z*zu)
-        if smooth_interfaces
-            tmp = moving_average(tmp, 2)
-        end
-        mu = @. real(tmp)
-        msigma = @. MU0 * w0 * imag(tmp)
-    end
+    Mh = dt / MU0
+    Me = dt / EPS0
 
-    mHy0 = @. (sz + msigma/(MU0*mu)) * dt/2 * tu
-    mHy1 = @. (1 - mHy0) / (1 + mHy0)
-    mHy2 = @. -dt/(MU0*mu) / (1 + mHy0) * tu*Eu / (zu*Hu)
-    mEx0 = @. (sz + esigma/(EPS0*eps)) * dt/2 * tu
-    mEx1 = @. (1 - mEx0) / (1 + mEx0)
-    mEx2 = @. dt/(EPS0*eps) / (1 + mEx0) * tu*Hu / (zu*Eu)
+    psiExz = zeros(Nz)
+    psiHyz = zeros(Nz)
 
-    return Model1D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, source)
+    return Model1D(field, source, Nt, dt, t, Mh, Me, Kz, Az, Bz, psiExz, psiHyz)
 end
 
 
-function update_H!(model::Model1D)
-    (; field, mHy1, mHy2) = model
-    (; Hy, CEy) = field
-    @. Hy = mHy1 * Hy + mHy2 * CEy
-    return nothing
-end
+function step!(model::Model1D, it)
+    (; field, source, t, Mh, Me, Kz, Az, Bz, psiExz, psiHyz) = model
+    (; Hy, Ex, dExz, dHyz) = field
 
+    @timeit "derivatives E" begin
+        derivative_Ex_z!(field)
+        synchronize()
+    end
+    @timeit "update PML psiE" begin
+        @. psiExz = Bz * psiExz + Az * dExz
+        synchronize()
+    end
+    @timeit "update H" begin
+        @. Hy = Hy - Mh * (0 + dExz / Kz) - Mh * (0 + psiExz)
+        synchronize()
+    end
 
-function update_E!(model::Model1D)
-    (; field, mEx1, mEx2) = model
-    (; Ex, CHx) = field
-    @. Ex = mEx1 * Ex + mEx2 * CHx
+    @timeit "derivatives H" begin
+        derivative_Hy_z!(field)
+        synchronize()
+    end
+    @timeit "update PML psiH" begin
+        @. psiHyz = Bz * psiHyz + Az * dHyz
+        synchronize()
+    end
+    @timeit "update E" begin
+        @. Ex = Ex + Me * (0 - dHyz / Kz) + Me * (0 - psiHyz)
+        synchronize()
+    end
+
+    @timeit "add_source" begin
+        add_source!(field, source, t[it])  # additive source
+        synchronize()
+    end
     return nothing
 end
 

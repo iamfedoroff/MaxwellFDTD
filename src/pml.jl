@@ -1,25 +1,28 @@
-# ******************************************************************************
-# 1D
-# ******************************************************************************
-function pml(grid::Grid1D, box)
-    (; Nz, z) = grid
-    zmin, zmax = z[1], z[end]
+function pml(x, box, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
+    Lx1, Lx2 = box
+    Nx = length(x)
+    xmin, xmax = x[1], x[end]
 
-    zpml1, zpml2 = box
+    eta0 = sqrt(MU0 / EPS0)
+    sigma_max1 = -(m + 1) * log(R0) / (2 * eta0 * Lx1)
+    sigma_max2 = -(m + 1) * log(R0) / (2 * eta0 * Lx2)
 
-    sz = zeros(Nz)
-
-    zb1, zb2 = zmin + zpml1, zmax - zpml2
-    for iz=1:Nz
-        if z[iz] < zb1
-            sz[iz] = abs((z[iz] - zb1) / zpml1)^3
+    sigma = zeros(Nx)
+    xb1, xb2 = xmin + Lx1, xmax - Lx2
+    for ix=1:Nx
+        if x[ix] < xb1
+            sigma[ix] = sigma_max1 * (abs(x[ix] - xb1) / Lx1)^m
         end
-        if z[iz] > zb2
-            sz[iz] = abs((z[iz] - zb2) / zpml2)^3
+        if x[ix] > xb2
+            sigma[ix] = sigma_max2 * (abs(x[ix] - xb2) / Lx2)^m
         end
     end
 
-    return sz
+    K = ones(Nx) * kappa
+    B = @. exp(-(sigma / K + alpha) * dt / EPS0)
+    A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
+
+    return K, A, B
 end
 
 
