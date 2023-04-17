@@ -10,9 +10,9 @@ struct Field1D{G, T, A} <: Field
     Hy :: A
     # electric field comonents:
     Ex :: A
-    # electric field curl:
+    # electric field derivatives:
     dExz :: A
-    # magnetic field curl:
+    # magnetic field derivatives:
     dHyz :: A
 end
 
@@ -26,7 +26,7 @@ function Field(grid::Grid1D; w0)
 end
 
 
-function derivative_Ex_z!(field::Field1D)
+function derivatives_E!(field::Field1D)
     (; grid, Ex, dExz) = field
     (; Nz, dz) = grid
     for iz=1:Nz-1
@@ -37,7 +37,7 @@ function derivative_Ex_z!(field::Field1D)
 end
 
 
-function derivative_Hy_z!(field::Field1D)
+function derivatives_H!(field::Field1D)
     (; grid, Hy, dHyz) = field
     (; Nz, dz) = grid
     dHyz[1] = (Hy[1] - Hy[Nz]) / dz   # periodic bc
@@ -65,11 +65,12 @@ struct Field2D{G, T, A} <: Field
     # electric field comonents:
     Ex :: A
     Ez :: A
-    # electric field curl:
-    CEy :: A
-    # magnetic field curl:
-    CHx :: A
-    CHz :: A
+    # electric field derivatives:
+    dExz :: A
+    dEzx :: A
+    # magnetic field derivatives:
+    dHyz :: A
+    dHyx :: A
 end
 
 @adapt_structure Field2D
@@ -77,84 +78,83 @@ end
 
 function Field(grid::Grid2D; w0)
     (; Nx, Nz) = grid
-    Hy, Ex, Ez, CEy, CHx, CHz = (zeros(Nx,Nz) for i=1:6)
-    return Field2D(grid, w0, Hy, Ex, Ez, CEy, CHx, CHz)
+    Hy, Ex, Ez, dExz, dEzx, dHyz, dHyx = (zeros(Nx,Nz) for i=1:7)
+    return Field2D(grid, w0, Hy, Ex, Ez, dExz, dEzx, dHyz, dHyx)
 end
 
 
-function curl_E!(field::Field2D)
-    (; grid, Ex, Ez, CEy) = field
+function derivatives_E!(field::Field2D)
+    (; grid, Ex, Ez, dExz, dEzx) = field
     (; Nx, Nz, dx, dz) = grid
+
     for iz=1:Nz-1
-        for ix=1:Nx-1
-            CEy[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz -
-                         (Ez[ix+1,iz] - Ez[ix,iz]) / dx
+        for ix=1:Nx
+            dExz[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz
         end
-        CEy[Nx,iz] = (Ex[Nx,iz+1] - Ex[Nx,iz]) / dz -
-                     (Ez[1,iz] - Ez[Nx,iz]) / dx
     end
-    for ix=1:Nx-1
-        CEy[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz -
-                     (Ez[ix+1,Nz] - Ez[ix,Nz]) / dx
+    for ix=1:Nx
+        dExz[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz
     end
-    CEy[Nx,Nz] = (Ex[Nx,1] - Ex[Nx,Nz]) / dz -
-                 (Ez[1,Nz] - Ez[Nx,Nz]) / dx
+
+    for iz=1:Nz
+        for ix=1:Nx-1
+            dEzx[ix,iz] = (Ez[ix+1,iz] - Ez[ix,iz]) / dx
+        end
+        dEzx[Nx,iz] = (Ez[1,iz] - Ez[Nx,iz]) / dx
+    end
+
     return nothing
 end
 
 
-function curl_E!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
+function derivatives_E!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
     (; Ex) = field
     N = length(Ex)
-    @krun N curl_E_kernel!(field)
+    @krun N derivatives_E_kernel!(field)
     return nothing
 end
-function curl_E_kernel!(field::Field2D)
+function derivatives_E_kernel!(field::Field2D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    (; grid, Ex, Ez, CEy) = field
+    (; grid, Ex, Ez, dExz, dEzx) = field
     (; Nx, Nz, dx, dz) = grid
 
     ci = CartesianIndices(Ex)
     for ici=id:stride:length(ci)
         ix = ci[ici][1]
         iz = ci[ici][2]
-        if (ix == Nx) && (iz == Nz)
-            CEy[Nx,Nz] = (Ex[Nx,1] - Ex[Nx,Nz]) / dz -
-                         (Ez[1,Nz] - Ez[Nx,Nz]) / dx
-        elseif ix == Nx
-            CEy[Nx,iz] = (Ex[Nx,iz+1] - Ex[Nx,iz]) / dz -
-                         (Ez[1,iz] - Ez[Nx,iz]) / dx
+        if ix == Nx
+            dEzx[Nx,iz] = (Ez[1,iz] - Ez[Nx,iz]) / dx
         elseif iz == Nz
-            CEy[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz -
-                         (Ez[ix+1,Nz] - Ez[ix,Nz]) / dx
+            dExz[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz
         else
-            CEy[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz -
-                         (Ez[ix+1,iz] - Ez[ix,iz]) / dx
+            dExz[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz
+            dEzx[ix,iz] = (Ez[ix+1,iz] - Ez[ix,iz]) / dx
         end
     end
     return nothing
 end
 
 
-function curl_H!(field::Field2D)
-    (; grid, Hy, CHx, CHz) = field
+
+function derivatives_H!(field::Field2D)
+    (; grid, Hy, dHyz, dHyx) = field
     (; Nx, Nz, dx, dz) = grid
 
     for ix=1:Nx
-        CHx[ix,1] = -(Hy[ix,1] - Hy[ix,Nz]) / dz
+        dHyz[ix,1] = (Hy[ix,1] - Hy[ix,Nz]) / dz
     end
     for iz=2:Nz
         for ix=1:Nx
-            CHx[ix,iz] = -(Hy[ix,iz] - Hy[ix,iz-1]) / dz
+            dHyz[ix,iz] = (Hy[ix,iz] - Hy[ix,iz-1]) / dz
         end
     end
 
     for iz=1:Nz
-        CHz[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
+        dHyx[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
         for ix=2:Nx
-            CHz[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
+            dHyx[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
         end
     end
 
@@ -162,34 +162,30 @@ function curl_H!(field::Field2D)
 end
 
 
-function curl_H!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
+function derivatives_H!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
     (; Hy) = field
     N = length(Hy)
-    @krun N curl_H_kernel!(field)
+    @krun N derivatives_H_kernel!(field)
     return nothing
 end
-function curl_H_kernel!(field::Field2D)
+function derivatives_H_kernel!(field::Field2D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    (; grid, Hy, CHx, CHz) = field
+    (; grid, Hy, dHyz, dHyx) = field
     (; Nx, Nz, dx, dz) = grid
 
     ci = CartesianIndices(Hy)
     for ici=id:stride:length(ci)
         ix = ci[ici][1]
         iz = ci[ici][2]
-
-        if iz == 1
-            CHx[ix,1] = -(Hy[ix,1] - Hy[ix,Nz]) / dz
-        else
-            CHx[ix,iz] = -(Hy[ix,iz] - Hy[ix,iz-1]) / dz
-        end
-
         if ix == 1
-            CHz[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
+            dHyx[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
+        elseif iz == 1
+            dHyz[ix,1] = (Hy[ix,1] - Hy[ix,Nz]) / dz
         else
-            CHz[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
+            dHyz[ix,iz] = (Hy[ix,iz] - Hy[ix,iz-1]) / dz
+            dHyx[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
         end
     end
     return nothing

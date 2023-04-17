@@ -4,43 +4,36 @@ abstract type Model end
 function step!(model, it)
     (; field, source, t) = model
 
-    # tfsf source:
-    # (; mHy2, mEx2, Esrc, Hsrc) = model
-    # (; grid, Hy, Ex) = field
-    # (; dz, z) = grid
-    # zsrc = 0
-    # izsrc = searchsortedfirst(z, zsrc)
-
-    @timeit "curl_E" begin
-        curl_E!(field)
+    @timeit "derivatives E" begin
+        derivatives_E!(field)
         synchronize()
     end
-    @timeit "update_H" begin
+    @timeit "update CPML E" begin
+        update_CPML_E!(model)
+        synchronize()
+    end
+    @timeit "update H" begin
         update_H!(model)
         synchronize()
     end
-    # Esrc = source(t[it])
-    # Hy[izsrc-1] -= mHy2[izsrc-1]/dz * Esrc   # tfsf source
 
-    @timeit "curl_H" begin
-        curl_H!(field)
+    @timeit "derivatives H" begin
+        derivatives_H!(field)
         synchronize()
     end
-    @timeit "update_E" begin
+    @timeit "update CPML H" begin
+        update_CPML_H!(model)
+        synchronize()
+    end
+    @timeit "update E" begin
         update_E!(model)
         synchronize()
     end
-    # n = sqrt(eps * mu)
-    # A = sqrt(eps / mu)
-    # td = n * dz / (2 * C0) + dt / 2
-    # Hsrc = A * source(t[it] + td)
-    # Ex[izsrc] += mEx2[izsrc]/dz * Hsrc   # tfsf source
 
     @timeit "add_source" begin
         add_source!(field, source, t[it])  # additive source
         synchronize()
     end
-
     return nothing
 end
 
@@ -127,40 +120,34 @@ function Model(
 end
 
 
-function step!(model::Model1D, it)
-    (; field, source, t, Mh, Me, Kz, Az, Bz, psiExz, psiHyz) = model
-    (; Hy, Ex, dExz, dHyz) = field
+function update_CPML_E!(model::Model1D)
+    (; field, Az, Bz, psiExz) = model
+    (; dExz) = field
+    @. psiExz = Bz * psiExz + Az * dExz
+    return nothing
+end
 
-    @timeit "derivatives E" begin
-        derivative_Ex_z!(field)
-        synchronize()
-    end
-    @timeit "update PML psiE" begin
-        @. psiExz = Bz * psiExz + Az * dExz
-        synchronize()
-    end
-    @timeit "update H" begin
-        @. Hy = Hy - Mh * (0 + dExz / Kz) - Mh * (0 + psiExz)
-        synchronize()
-    end
 
-    @timeit "derivatives H" begin
-        derivative_Hy_z!(field)
-        synchronize()
-    end
-    @timeit "update PML psiH" begin
-        @. psiHyz = Bz * psiHyz + Az * dHyz
-        synchronize()
-    end
-    @timeit "update E" begin
-        @. Ex = Ex + Me * (0 - dHyz / Kz) + Me * (0 - psiHyz)
-        synchronize()
-    end
+function update_CPML_H!(model::Model1D)
+    (; field, Az, Bz, psiHyz) = model
+    (; dHyz) = field
+    @. psiHyz = Bz * psiHyz + Az * dHyz
+    return nothing
+end
 
-    @timeit "add_source" begin
-        add_source!(field, source, t[it])  # additive source
-        synchronize()
-    end
+
+function update_H!(model::Model1D)
+    (; field, Mh, Kz, psiExz) = model
+    (; Hy, dExz) = field
+    @. Hy = Hy - Mh * (0 + dExz / Kz) - Mh * (0 + psiExz)
+    return nothing
+end
+
+
+function update_E!(model::Model1D)
+    (; field, Me, Kz, psiHyz) = model
+    (; Ex, dHyz) = field
+    @. Ex = Ex + Me * (0 - dHyz / Kz) + Me * (0 - psiHyz)
     return nothing
 end
 
@@ -168,18 +155,24 @@ end
 # ******************************************************************************
 # 2D
 # ******************************************************************************
-struct Model2D{F, T, R, A, S} <: Model
+struct Model2D{F, S, T, R, A1, A2} <: Model
     field :: F
+    source :: S
     Nt :: Int
     dt :: T
     t :: R
-    mHy1 :: A
-    mHy2 :: A
-    mEx1 :: A
-    mEx2 :: A
-    mEz1 :: A
-    mEz2 :: A
-    source :: S
+    Mh :: T
+    Me :: T
+    Kx :: A1
+    Ax :: A1
+    Bx :: A1
+    Kz :: A1
+    Az :: A1
+    Bz :: A1
+    psiExz :: A2
+    psiEzx :: A2
+    psiHyz :: A2
+    psiHyx :: A2
 end
 
 @adapt_structure Model2D
@@ -201,63 +194,55 @@ function Model(
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
-    sx, sz = pml(grid, pml_box)
-    @. sx *= 1 / (2*dt)
-    @. sz *= 1 / (2*dt)
+    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
+    Kz, Az, Bz = pml(z, pml_box[3:4], dt)
 
-    if isnothing(permittivity)
-        eps = 1
-        esigma = 0
-    else
-        tmp = [permittivity(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
-        if smooth_interfaces
-            tmp = moving_average(tmp, 2)
-        end
-        eps = @. real(tmp)
-        esigma = @. EPS0 * w0 * imag(tmp)
-    end
-    if isnothing(permeability)
-        mu = 1
-        msigma = 0
-    else
-        tmp = [permeability(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
-        if smooth_interfaces
-            tmp = moving_average(tmp, 2)
-        end
-        mu = @. real(tmp)
-        msigma = @. MU0 * w0 * imag(tmp)
-    end
+    Mh = dt / MU0
+    Me = dt / EPS0
 
-    # update coefficients:
-    mHy0 = @. (sx + sz + msigma/(MU0*mu)) * dt/2 + sx*sz*dt^2 / 4
-    mHy1 = @. (1 - mHy0) / (1 + mHy0)
-    mHy2 = @. -dt/(MU0*mu) / (1 + mHy0)
+    psiExz, psiEzx, psiHyz, psiHyx = (zeros(Nx,Nz) for i=1:4)
 
-    mEx0 = @. (sz + esigma/(EPS0*eps)) * dt/2 + sx*esigma*dt^2 / (4*EPS0*eps)
-    mEx1 = @. (1 - mEx0) / (1 + mEx0)
-    mEx2 = @. dt/(EPS0*eps) / (1 + mEx0)
+    return Model2D(
+        field, source, Nt, dt, t, Mh, Me, Kx, Ax, Bx, Kz, Az, Bz,
+        psiExz, psiEzx, psiHyz, psiHyx,
+    )
+end
 
-    mEz0 = @. (sx + esigma/(EPS0*eps)) * dt/2 + sz*esigma*dt^2 / (4*EPS0*eps)
-    mEz1 = @. (1 - mEz0) / (1 + mEz0)
-    mEz2 = @. dt/(EPS0*eps) / (1 + mEz0)
 
-    return Model2D(field, Nt, dt, t, mHy1, mHy2, mEx1, mEx2, mEz1, mEz2, source)
+function update_CPML_E!(model::Model2D)
+    (; field, Ax, Bx, Az, Bz, psiExz, psiEzx) = model
+    (; dExz, dEzx) = field
+    update_psi!(psiExz, Az, Bz, dExz; dim=2)
+    update_psi!(psiEzx, Ax, Bx, dEzx; dim=1)
+    return nothing
+end
+
+
+function update_CPML_H!(model::Model2D)
+    (; field, Ax, Bx, Az, Bz, psiHyz, psiHyx) = model
+    (; dHyz, dHyx) = field
+    update_psi!(psiHyz, Az, Bz, dHyz; dim=2)
+    update_psi!(psiHyx, Ax, Bx, dHyx; dim=1)
+    return nothing
 end
 
 
 function update_H!(model::Model2D)
-    (; field, mHy1, mHy2) = model
-    (; Hy, CEy) = field
-    @. Hy = mHy1 * Hy + mHy2 * CEy
+    (; field, Mh, Kx, Kz, psiExz, psiEzx) = model
+    (; Hy, dExz, dEzx) = field
+    @. Hy = Hy - Mh * (dExz - dEzx) - Mh * (psiExz - psiEzx)
+    # @. Hy = Hy - Mh * (dExz / Kz - dEzx / Kx) - Mh * (psiExz - psiEzx)
     return nothing
 end
 
 
 function update_E!(model::Model2D)
-    (; field, mEx1, mEx2, mEz1, mEz2) = model
-    (; Ex, Ez, CHx, CHz) = field
-    @. Ex = mEx1 * Ex + mEx2 * CHx
-    @. Ez = mEz1 * Ez + mEz2 * CHz
+    (; field, Me, Kx, Kz, psiHyz, psiHyx) = model
+    (; Ex, Ez, dHyz, dHyx) = field
+    @. Ex = Ex + Me * (0 - dHyz) + Me * (0 - psiHyz)
+    @. Ez = Ez + Me * (dHyx - 0) + Me * (psiHyx - 0)
+    # @. Ex = Ex + Me * (0 - dHyz / Kz) + Me * (0 - psiHyz)
+    # @. Ez = Ez + Me * (dHyx / Kx - 0) + Me * (psiHyx - 0)
     return nothing
 end
 
@@ -393,6 +378,50 @@ function update_E!(model::Model3D)
 end
 
 
+function step!(model::Model3D, it)
+    (; field, source, t) = model
+
+    # tfsf source:
+    # (; mHy2, mEx2, Esrc, Hsrc) = model
+    # (; grid, Hy, Ex) = field
+    # (; dz, z) = grid
+    # zsrc = 0
+    # izsrc = searchsortedfirst(z, zsrc)
+
+    @timeit "curl_E" begin
+        curl_E!(field)
+        synchronize()
+    end
+    @timeit "update_H" begin
+        update_H!(model)
+        synchronize()
+    end
+    # Esrc = source(t[it])
+    # Hy[izsrc-1] -= mHy2[izsrc-1]/dz * Esrc   # tfsf source
+
+    @timeit "curl_H" begin
+        curl_H!(field)
+        synchronize()
+    end
+    @timeit "update_E" begin
+        update_E!(model)
+        synchronize()
+    end
+    # n = sqrt(eps * mu)
+    # A = sqrt(eps / mu)
+    # td = n * dz / (2 * C0) + dt / 2
+    # Hsrc = A * source(t[it] + td)
+    # Ex[izsrc] += mEx2[izsrc]/dz * Hsrc   # tfsf source
+
+    @timeit "add_source" begin
+        add_source!(field, source, t[it])  # additive source
+        synchronize()
+    end
+
+    return nothing
+end
+
+
 # ******************************************************************************
 # Util
 # ******************************************************************************
@@ -415,4 +444,31 @@ function moving_average(A::AbstractArray, m::Int)
         out[I] = s/n
     end
     return out
+end
+
+
+function update_psi!(psiF, A, B, dF; dim)
+    ci = CartesianIndices(psiF)
+    for ici in eachindex(ci)
+        idim = ci[ici][dim]
+        psiF[ici] = B[idim] * psiF[ici] + A[idim] * dF[ici]
+    end
+    return nothing
+end
+
+
+function update_psi!(psiF::CuArray, A, B, dF; dim)
+    N = length(psiF)
+    @krun N update_psi_kernel!(psiF, A, B, dF, dim)
+    return nothing
+end
+function update_psi_kernel!(psiF, A, B, dF, dim)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+    ci = CartesianIndices(psiF)
+    for ici=id:stride:length(ci)
+        idim = ci[ici][dim]
+        psiF[ici] = B[idim] * psiF[ici] + A[idim] * dF[ici]
+    end
+    return nothing
 end
