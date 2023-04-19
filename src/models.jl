@@ -74,14 +74,15 @@ end
 # ******************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************
-struct Model1D{F, S, T, R, A} <: Model
+struct Model1D{F, S, T, R, AH, AE, A} <: Model
     field :: F
     source :: S
     Nt :: Int
     dt :: T
     t :: R
-    Mh :: T
-    Me :: T
+    Mh :: AH
+    Me1 :: AE
+    Me2 :: AE
     Kz :: A
     Az :: A
     Bz :: A
@@ -98,25 +99,46 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
-    smooth_interfaces=true,
+    conductivity=nothing,
     pml_box=(0,0),
 )
     (; grid) = field
     (; Nz, dz, z) = grid
 
+    if isnothing(permittivity)
+        eps = 1
+    else
+        eps = @. permittivity(z)
+    end
+    if isnothing(permeability)
+        mu = 1
+    else
+        mu = @. permeability(z)
+    end
+    if isnothing(conductivity)
+        sigma = 0
+    else
+        sigma = @. conductivity(z)
+    end
+
     dt = CN / C0 / sqrt(1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
+    Mh = @. dt / (MU0*mu)
+
+    Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
+    Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
+    Me2 = @. 2*dt / Me0
+    # Me3 = @. CJsum / Me0
+
     Kz, Az, Bz = pml(z, pml_box, dt)
 
-    Mh = dt / MU0
-    Me = dt / EPS0
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
 
-    psiExz = zeros(Nz)
-    psiHyz = zeros(Nz)
-
-    return Model1D(field, source, Nt, dt, t, Mh, Me, Kz, Az, Bz, psiExz, psiHyz)
+    return Model1D(
+        field, source, Nt, dt, t, Mh, Me1, Me2, Kz, Az, Bz, psiExz, psiHyz,
+    )
 end
 
 
@@ -145,9 +167,9 @@ end
 
 
 function update_E!(model::Model1D)
-    (; field, Me, Kz, psiHyz) = model
+    (; field, Me1, Me2, Kz, psiHyz) = model
     (; Ex, dHyz) = field
-    @. Ex = Ex + Me * (0 - dHyz / Kz) + Me * (0 - psiHyz)
+    @. Ex = Me1 * Ex + Me2 * (0 - dHyz / Kz) + Me2 * (0 - psiHyz)
     return nothing
 end
 
@@ -155,14 +177,15 @@ end
 # ******************************************************************************
 # 2D
 # ******************************************************************************
-struct Model2D{F, S, T, R, A1, A2} <: Model
+struct Model2D{F, S, T, R, AH, AE, A1, A2} <: Model
     field :: F
     source :: S
     Nt :: Int
     dt :: T
     t :: R
-    Mh :: T
-    Me :: T
+    Mh :: AH
+    Me1 :: AE
+    Me2 :: AE
     Kx :: A1
     Ax :: A1
     Bx :: A1
@@ -184,26 +207,46 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
-    smooth_interfaces=true,
+    conductivity=nothing,
     pml_box=(0,0,0,0),
 )
-    (; grid, w0) = field
+    (; grid) = field
     (; Nx, Nz, dx, dz, x, z) = grid
+
+    if isnothing(permittivity)
+        eps = 1
+    else
+        eps = [permittivity(x[ix],z[iz]) for ix=1:Nx, iz=1:Nz]
+    end
+    if isnothing(permeability)
+        mu = 1
+    else
+        mu = [permeability(x[ix],z[iz]) for ix=1:Nx, iz=1:Nz]
+    end
+    if isnothing(conductivity)
+        sigma = 0
+    else
+        sigma = [conductivity(x[ix],z[iz]) for ix=1:Nx, iz=1:Nz]
+    end
 
     dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
+    Mh = @. dt / (MU0*mu)
+
+    Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
+    Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
+    Me2 = @. 2*dt / Me0
+    # Me3 = @. CJsum / Me0
+
     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
     Kz, Az, Bz = pml(z, pml_box[3:4], dt)
-
-    Mh = dt / MU0
-    Me = dt / EPS0
 
     psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
 
     return Model2D(
-        field, source, Nt, dt, t, Mh, Me, Kx, Ax, Bx, Kz, Az, Bz,
+        field, source, Nt, dt, t, Mh, Me1, Me2, Kx, Ax, Bx, Kz, Az, Bz,
         psiExz, psiEzx, psiHyx, psiHyz,
     )
 end
@@ -237,12 +280,12 @@ end
 
 
 function update_E!(model::Model2D)
-    (; field, Me, Kx, Kz, psiHyz, psiHyx) = model
+    (; field, Me1, Me2, Kx, Kz, psiHyz, psiHyx) = model
     (; Ex, Ez, dHyz, dHyx) = field
-    @. Ex = Ex + Me * (0 - dHyz) + Me * (0 - psiHyz)
-    @. Ez = Ez + Me * (dHyx - 0) + Me * (psiHyx - 0)
-    # @. Ex = Ex + Me * (0 - dHyz / Kz) + Me * (0 - psiHyz)
-    # @. Ez = Ez + Me * (dHyx / Kx - 0) + Me * (psiHyx - 0)
+    @. Ex = Me1 * Ex + Me2 * (0 - dHyz) + Me2 * (0 - psiHyz)
+    @. Ez = Me1 * Ez + Me2 * (dHyx - 0) + Me2 * (psiHyx - 0)
+    # @. Ex = Me1 * Ex + Me2 * (0 - dHyz / Kz) + Me2 * (0 - psiHyz)
+    # @. Ez = Me1 * Ez + Me2 * (dHyx / Kx - 0) + Me2 * (psiHyx - 0)
     return nothing
 end
 
@@ -250,14 +293,15 @@ end
 # ******************************************************************************
 # 3D
 # ******************************************************************************
-struct Model3D{F, S, T, R, A1, A2} <: Model
+struct Model3D{F, S, T, R, AH, AE, A1, A2} <: Model
     field :: F
     source :: S
     Nt :: Int
     dt :: T
     t :: R
-    Mh :: T
-    Me :: T
+    Mh :: AH
+    Me1 :: AE
+    Me2 :: AE
     Kx :: A1
     Ax :: A1
     Bx :: A1
@@ -290,28 +334,49 @@ function Model(
     CN=1,
     permittivity=nothing,
     permeability=nothing,
-    smooth_interfaces=true,
+    conductivity=nothing,
     pml_box=(0,0,0,0,0,0),
 )
     (; grid, w0) = field
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
+    if isnothing(permittivity)
+        eps = 1
+    else
+        eps = [permittivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+    if isnothing(permeability)
+        mu = 1
+    else
+        mu = [permeability(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+    if isnothing(conductivity)
+        sigma = 0
+    else
+        sigma = [conductivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
+
+    Mh = @. dt / (MU0*mu)
+
+    Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
+    Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
+    Me2 = @. 2*dt / Me0
+    # Me3 = @. CJsum / Me0
 
     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
     Ky, Ay, By = pml(y, pml_box[3:4], dt)
     Kz, Az, Bz = pml(z, pml_box[5:6], dt)
 
-    Mh = dt / MU0
-    Me = dt / EPS0
-
     psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
     psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
 
     return Model3D(
-        field, source, Nt, dt, t, Mh, Me, Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
+        field, source, Nt, dt, t, Mh, Me1, Me2,
+        Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
         psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
         psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
     )
@@ -362,15 +427,15 @@ end
 
 
 function update_E!(model::Model3D)
-    (; field, Me, Kx, Ky, Kz) = model
+    (; field, Me1, Me2, Kx, Ky, Kz) = model
     (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
     (; Ex, Ey, Ez, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
-    @. Ex = Ex + Me * (dHzy - dHyz) + Me * (psiHzy - psiHyz)
-    @. Ey = Ey + Me * (dHxz - dHzx) + Me * (psiHxz - psiHzx)
-    @. Ez = Ez + Me * (dHyx - dHxy) + Me * (psiHyx - psiHxy)
-    # @. Ex = Ex + Me * (dHzy / Ky - dHyz / Kz) + Me * (psiHzy - psiHyz)
-    # @. Ey = Ey + Me * (dHxz / Kz - dHzx / Kx) + Me * (psiHxz - psiHzx)
-    # @. Ez = Ez + Me * (dHyx / Kx - dHxy / Ky) + Me * (psiHyx - psiHxy)
+    @. Ex = Me1 * Ex + Me2 * (dHzy - dHyz) + Me2 * (psiHzy - psiHyz)
+    @. Ey = Me1 * Ey + Me2 * (dHxz - dHzx) + Me2 * (psiHxz - psiHzx)
+    @. Ez = Me1 * Ez + Me2 * (dHyx - dHxy) + Me2 * (psiHyx - psiHxy)
+    # @. Ex = Me1 * Ex + Me2 * (dHzy / Ky - dHyz / Kz) + Me2 * (psiHzy - psiHyz)
+    # @. Ey = Me1 * Ey + Me2 * (dHxz / Kz - dHzx / Kx) + Me2 * (psiHxz - psiHzx)
+    # @. Ez = Me1 * Ez + Me2 * (dHyx / Kx - dHxy / Ky) + Me2 * (psiHyx - psiHxy)
     return nothing
 end
 
