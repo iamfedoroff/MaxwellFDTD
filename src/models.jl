@@ -74,70 +74,332 @@ end
 # ******************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************
-struct Model1D{F, S, T, R, AH, AE, A} <: Model
+abstract type Model1D <: Model end
+
+
+struct Model1D_ADE_Debye{F, S, T, R, A} <: Model1D
     field :: F
     source :: S
     Nt :: Int
     dt :: T
     t :: R
-    Mh :: AH
-    Me1 :: AE
-    Me2 :: AE
+    Mh :: A
+    Me1 :: A
+    Me2 :: A
     Kz :: A
     Az :: A
     Bz :: A
     psiExz :: A
     psiHyz :: A
+    Aq :: A
+    Bq :: A
+    Jx :: A
+    oldEx :: A
 end
 
-@adapt_structure Model1D
+@adapt_structure Model1D_ADE_Debye
 
 
-function Model(
+function Model1D_ADE_Debye(
     field::Field1D, source;
     tmax,
     CN=1,
-    permittivity=nothing,
-    permeability=nothing,
-    conductivity=nothing,
+    geometry,
+    material,
     pml_box=(0,0),
 )
     (; grid) = field
     (; Nz, dz, z) = grid
 
-    if isnothing(permittivity)
-        eps = 1
-    else
-        eps = @. permittivity(z)
-    end
-    if isnothing(permeability)
-        mu = 1
-    else
-        mu = @. permeability(z)
-    end
-    if isnothing(conductivity)
-        sigma = 0
-    else
-        sigma = @. conductivity(z)
-    end
+    dt = CN / C0 / sqrt(1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # ..........................................................................
+    (; eps, mu, sigma, chi) = material
+    @assert typeof(chi) <: DebyeSusceptibility
+    (; depsq, tauq) = chi
+
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    aq = 1 / tauq
+    bq = EPS0 * depsq / tauq
+    Aq = (1 - aq * dt / 2) / (1 + aq * dt / 2)
+    Bq = bq / (1 + aq * dt / 2)
+    Aq = @. geometry * Aq
+    Bq = @. geometry * Bq
+    Jx = zeros(Nz)
+    oldEx = zeros(Nz)
+    # ..........................................................................
+
+    Mh = @. dt / (MU0*mu)
+
+    Me1 = @. (2*EPS0*eps - sigma*dt + dt*Bq) / (2*EPS0*eps + sigma*dt + dt*Bq)
+    Me2 = @. 2*dt / (2*EPS0*eps + sigma*dt + dt*Bq)
+
+
+    Kz, Az, Bz = pml(z, pml_box, dt)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+
+    return Model1D_ADE_Debye(
+        field, source, Nt, dt, t, Mh, Me1, Me2, Kz, Az, Bz, psiExz, psiHyz,
+        Aq, Bq, Jx, oldEx,
+    )
+end
+
+
+struct Model1D_ADE_Drude{F, S, T, R, A} <: Model1D
+    field :: F
+    source :: S
+    Nt :: Int
+    dt :: T
+    t :: R
+    Mh :: A
+    Me1 :: A
+    Me2 :: A
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+    Aq :: A
+    Bq :: A
+    Jx :: A
+    oldEx :: A
+end
+
+@adapt_structure Model1D_ADE_Drude
+
+
+function Model1D_ADE_Drude(
+    field::Field1D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0),
+)
+    (; grid) = field
+    (; Nz, dz, z) = grid
 
     dt = CN / C0 / sqrt(1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
+    # ..........................................................................
+    (; eps, mu, sigma, chi) = material
+    @assert typeof(chi) <: DrudeSusceptibility
+    (; wq, gammaq) = chi
+
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    aq = gammaq
+    bq = EPS0 * wq^2
+    Aq = (1 - aq * dt / 2) / (1 + aq * dt / 2)
+    Bq = bq * dt / 2 / (1 + aq * dt / 2)
+    Aq = @. geometry * Aq
+    Bq = @. geometry * Bq
+    Jx = zeros(Nz)
+    oldEx = zeros(Nz)
+    # ..........................................................................
+
     Mh = @. dt / (MU0*mu)
 
-    Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
-    Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
-    Me2 = @. 2*dt / Me0
-    # Me3 = @. CJsum / Me0
+    Me1 = @. (2*EPS0*eps - sigma*dt - dt*Bq) / (2*EPS0*eps + sigma*dt + dt*Bq)
+    Me2 = @. 2*dt / (2*EPS0*eps + sigma*dt + dt*Bq)
 
     Kz, Az, Bz = pml(z, pml_box, dt)
-
     psiExz, psiHyz = zeros(Nz), zeros(Nz)
 
-    return Model1D(
+    return Model1D_ADE_Drude(
         field, source, Nt, dt, t, Mh, Me1, Me2, Kz, Az, Bz, psiExz, psiHyz,
+        Aq, Bq, Jx, oldEx,
+    )
+end
+
+
+struct Model1D_ADE_Lorentz{F, S, T, R, A} <: Model1D
+    field :: F
+    source :: S
+    Nt :: Int
+    dt :: T
+    t :: R
+    Mh :: A
+    Me1 :: A
+    Me2 :: A
+    Me3 :: A
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+    Aq :: A
+    Bq :: A
+    Cq :: A
+    Jx :: A
+    oldEx1 :: A
+    oldEx2 :: A
+    oldJx1 :: A
+    oldJx2 :: A
+end
+
+@adapt_structure Model1D_ADE_Lorentz
+
+
+function Model1D_ADE_Lorentz(
+    field::Field1D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0),
+)
+    (; grid) = field
+    (; Nz, dz, z) = grid
+
+    dt = CN / C0 / sqrt(1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # ..........................................................................
+    (; eps, mu, sigma, chi) = material
+    @assert typeof(chi) <: LorentzSusceptibility
+    (; depsq, wq, deltaq) = chi
+
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    aq = 2 * deltaq
+    bq = wq^2
+    cq = EPS0 * depsq * wq^2
+    Aq = (2 - bq * dt^2) / (aq * dt / 2 + 1)
+    Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
+    Cq = cq * dt / 2 / (aq * dt / 2 + 1)
+    Aq = @. geometry * Aq
+    Bq = @. geometry * Bq
+    Cq = @. geometry * Cq
+    Jx = zeros(Nz)
+    oldEx1, oldEx2, oldJx1, oldJx2 = (zeros(Nz) for i=1:4)
+    # ..........................................................................
+
+    Mh = @. dt / (MU0*mu)
+
+    Me1 = @. (2*EPS0*eps - sigma*dt) / (2*EPS0*eps + sigma*dt + dt*Cq)
+    Me2 = @. dt*Cq / (2*EPS0*eps + sigma*dt + dt*Cq)
+    Me3 = @. 2*dt / (2*EPS0*eps + sigma*dt + dt*Cq)
+
+    Kz, Az, Bz = pml(z, pml_box, dt)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+
+    return Model1D_ADE_Lorentz(
+        field, source, Nt, dt, t, Mh, Me1, Me2, Me3, Kz, Az, Bz, psiExz, psiHyz,
+        Aq, Bq, Cq, Jx, oldEx1, oldEx2, oldJx1, oldJx2,
+    )
+end
+
+
+struct Model1D_PLRC{F, S, T, R, A, AP} <: Model1D
+    field :: F
+    source :: S
+    Nt :: Int
+    dt :: T
+    t :: R
+    Mh :: A
+    Me1 :: A
+    Me2 :: A
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+    Cr :: AP
+    dchi0 :: AP
+    dksi0 :: AP
+    PLRCx :: AP
+    oldEx :: A
+end
+
+@adapt_structure Model1D_PLRC
+
+
+function Model1D_PLRC(
+    field::Field1D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0),
+)
+    (; grid) = field
+    (; Nz, dz, z) = grid
+
+    dt = CN / C0 / sqrt(1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # ..........................................................................
+    (; eps, mu, sigma, chi) = material
+
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    if typeof(chi) <: DebyeSusceptibility
+        (; depsq, tauq) = chi
+        Cr = exp(-dt / tauq)
+        chi0 = depsq * (1 - Cr)
+        ksi0 = depsq * tauq / dt * (1 - (dt / tauq + 1) * Cr)
+        dchi0 = chi0 * (1 - Cr)
+        dksi0 = ksi0 * (1 - Cr)
+    elseif typeof(chi) <: DrudeSusceptibility
+        (; wq, gammaq) = chi
+        Cr = exp(-gammaq * dt)
+        chi0 = wq^2 / gammaq * dt - wq^2 / gammaq^2 * (1 - Cr)
+        ksi0 = wq^2 / gammaq * dt / 2 -
+            wq^2 / gammaq^3 / dt * (1 - (1 + gammaq * dt) * Cr)
+        dchi0 = -wq^2 / gammaq^2 * (1 - Cr)^2
+        dksi0 = -wq^2 / gammaq^3 / dt * (1 - (1 + gammaq*dt) * Cr) * (1 - Cr)
+    elseif typeof(chi) <: LorentzSusceptibility
+        (; depsq, wq, deltaq) = chi
+        alphaq = deltaq
+        betaq = sqrt(wq^2 - deltaq^2)
+        gammaq = depsq * wq^2 / betaq
+        arg = alphaq + 1im * betaq
+        Cr = exp(-arg * dt)
+        chi0 = 1im * gammaq / arg * (1 - Cr)
+        ksi0 = 1im * gammaq / arg^2 * (1 - (arg * dt + 1) * Cr)
+        dchi0 = chi0 * (1 - Cr)
+        dksi0 = ksi0 * (1 - Cr)
+    else
+        error("Wrong susceptibility type.")
+    end
+
+    Cr = @. geometry * Cr
+    chi0 = @. geometry * chi0
+    ksi0 = @. geometry * ksi0
+    dchi0 = @. geometry * dchi0
+    dksi0 = @. geometry * dksi0
+    PLRCx = zeros(eltype(Cr), Nz)
+    oldEx = zeros(Nz)
+    # ..........................................................................
+
+    Mh = @. dt / (MU0*mu)
+
+    Me0 = @. (eps + sigma*dt/(2*EPS0) + real(chi0) - real(ksi0))
+    Me1 = @. (eps - sigma*dt/(2*EPS0) - real(ksi0)) / Me0
+    Me2 = @. dt/EPS0 / Me0
+
+    Kz, Az, Bz = pml(z, pml_box, dt)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+
+    return Model1D_PLRC(
+        field, source, Nt, dt, t, Mh, Me1, Me2, Kz, Az, Bz, psiExz, psiHyz,
+        Cr, dchi0, dksi0, PLRCx, oldEx,
     )
 end
 
@@ -166,10 +428,47 @@ function update_H!(model::Model1D)
 end
 
 
-function update_E!(model::Model1D)
-    (; field, Me1, Me2, Kz, psiHyz) = model
+function update_E!(model::Model1D_ADE_Debye)
+    (; field, Me1, Me2, Kz, psiHyz, Aq, Bq, Jx, oldEx) = model
     (; Ex, dHyz) = field
-    @. Ex = Me1 * Ex + Me2 * (0 - dHyz / Kz) + Me2 * (0 - psiHyz)
+    @. oldEx = Ex
+    @. Ex = Me1 * Ex + Me2 * ((0 - dHyz/Kz) + (0 - psiHyz) - (1 + Aq)/2 * Jx)
+    @. Jx = Aq * Jx + Bq * (Ex - oldEx)
+    return nothing
+end
+
+
+function update_E!(model::Model1D_ADE_Drude)
+    (; field, Me1, Me2, Kz, psiHyz, Aq, Bq, Jx, oldEx) = model
+    (; Ex, dHyz) = field
+    @. oldEx = Ex
+    @. Ex = Me1 * Ex + Me2 * ((0 - dHyz/Kz) + (0 - psiHyz) - (1 + Aq)/2 * Jx)
+    @. Jx = Aq * Jx + Bq * (Ex + oldEx)
+    return nothing
+end
+
+
+function update_E!(model::Model1D_ADE_Lorentz)
+    (; field, Me1, Me2, Me3, Kz, psiHyz, Aq, Bq, Cq, Jx, oldEx1, oldEx2, oldJx1, oldJx2) = model
+    (; Ex, dHyz) = field
+    @. oldEx2 = oldEx1
+    @. oldEx1 = Ex
+    @. oldJx2 = oldJx1
+    @. oldJx1 = Jx
+    @. Ex = Me1 * Ex +
+            Me2 * oldEx2 +
+            Me3 * ((0 - dHyz/Kz) + (0 - psiHyz) - ((1 + Aq)*Jx + Bq*oldJx2)/2)
+    @. Jx = Aq * Jx + Bq * oldJx2 + Cq * (Ex - oldEx2)
+    return nothing
+end
+
+
+function update_E!(model::Model1D_PLRC)
+    (; field, dt, Me1, Me2, Kz, psiHyz, Cr, dchi0, dksi0, PLRCx, oldEx) = model
+    (; Ex, dHyz) = field
+    @. oldEx = Ex
+    @. Ex = Me1 * Ex + Me2 * ((0 - dHyz/Kz) + (0 - psiHyz) + EPS0/dt * real(PLRCx))
+    @. PLRCx = Cr * PLRCx + (dchi0 - dksi0) * Ex + dksi0 * oldEx
     return nothing
 end
 
