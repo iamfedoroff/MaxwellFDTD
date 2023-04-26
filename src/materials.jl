@@ -9,7 +9,7 @@ DebyeSusceptibility(; depsq, tauq) = DebyeSusceptibility(depsq, tauq)
 
 
 struct DrudeSusceptibility{T} <: Susceptibility
-    wq :: T
+    wpq :: T
     gammaq :: T
 end
 DrudeSusceptibility(; wq, gammaq) = DrudeSusceptibility(wq, gammaq)
@@ -31,6 +31,17 @@ struct LorentzMultiSusceptibility{A} <: Susceptibility
 end
     LorentzMultiSusceptibility(; depsq, wq, deltaq) =
         LorentzMultiSusceptibility(depsq, wq, deltaq)
+
+
+struct DrudeLorentzSusceptibility{T, A} <: Susceptibility
+    wpq :: T
+    gammaq :: T
+    depsq :: A
+    wq :: A
+    deltaq :: A
+end
+DrudeLorentzSusceptibility(; wpq, gammaq, depsq, wq, deltaq) =
+    DrudeLorentzSusceptibility(wpq, gammaq, depsq, wq, deltaq)
 
 
 # ******************************************************************************

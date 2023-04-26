@@ -191,14 +191,14 @@ function Model1D_ADE_Drude(
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
     @assert typeof(chi) <: DrudeSusceptibility
-    (; wq, gammaq) = chi
+    (; wpq, gammaq) = chi
 
     eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
     mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
     sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
 
     aq = gammaq
-    bq = EPS0 * wq^2
+    bq = EPS0 * wpq^2
     Aq = (1 - aq * dt / 2) / (1 + aq * dt / 2)
     Bq = bq * dt / 2 / (1 + aq * dt / 2)
     Aq = @. geometry * Aq
@@ -393,6 +393,111 @@ function Model1D_ADE_LorentzMulti(
 end
 
 
+struct Model1D_ADE_DrudeLorentz{F, S, T, R, A, AL} <: Model1D
+    field :: F
+    source :: S
+    Nt :: Int
+    dt :: T
+    t :: R
+    Mh :: A
+    Me1 :: A
+    Me2 :: A
+    Me3 :: A
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+    ADq :: A
+    BDq :: A
+    JDx :: A
+    ALq :: AL
+    BLq :: AL
+    CLq :: AL
+    JLx :: AL
+    oldEx1 :: A
+    oldEx2 :: A
+    oldJLx1 :: AL
+    oldJLx2 :: AL
+end
+
+@adapt_structure Model1D_ADE_DrudeLorentz
+
+
+function Model1D_ADE_DrudeLorentz(
+    field::Field1D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0),
+)
+    (; grid) = field
+    (; Nz, dz, z) = grid
+
+    dt = CN / C0 / sqrt(1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # ..........................................................................
+    (; eps, mu, sigma, chi) = material
+    @assert typeof(chi) <: DrudeLorentzSusceptibility
+    (; wpq, gammaq, depsq, wq, deltaq) = chi
+
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    # Drude ....................................................................
+    aq = gammaq
+    bq = EPS0 * wpq^2
+    Aq = (1 - aq * dt / 2) / (1 + aq * dt / 2)
+    Bq = bq * dt / 2 / (1 + aq * dt / 2)
+
+    ADq = @. geometry * Aq
+    BDq = @. geometry * Bq
+
+    JDx = zeros(Nz)
+
+    # Lorentz ..................................................................
+    aq = @. 2 * deltaq
+    bq = @. wq^2
+    cq = @. EPS0 * depsq * wq^2
+    Aq = @. (2 - bq * dt^2) / (aq * dt / 2 + 1)
+    Bq = @. (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
+    Cq = @. cq * dt / 2 / (aq * dt / 2 + 1)
+
+    Nq = length(wq)
+    ALq, BLq, CLq = (zeros(Nq,Nz) for i=1:3)
+    for iz=1:Nz, iq=1:Nq
+        ALq[iq,iz] = @. geometry[iz] * Aq[iq]
+        BLq[iq,iz] = @. geometry[iz] * Bq[iq]
+        CLq[iq,iz] = @. geometry[iz] * Cq[iq]
+    end
+    sumCLq = vec(sum(CLq; dims=1))
+
+    oldEx1, oldEx2 = (zeros(Nz) for i=1:2)
+    oldJLx1, oldJLx2 = (zeros(Nq,Nz) for i=1:2)
+    JLx = zeros(Nq,Nz)
+    # ..........................................................................
+
+    Mh = @. dt / (MU0*mu)
+
+    Me0 = @. (2*EPS0*eps + sigma*dt + dt*BDq + dt*sumCLq)
+    Me1 = @. (2*EPS0*eps - sigma*dt - dt*BDq) / Me0
+    Me2 = @. dt * sumCLq / Me0
+    Me3 = @. 2 * dt / Me0
+
+    Kz, Az, Bz = pml(z, pml_box, dt)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+
+    return Model1D_ADE_DrudeLorentz(
+        field, source, Nt, dt, t, Mh, Me1, Me2, Me3, Kz, Az, Bz, psiExz, psiHyz,
+        ADq, BDq, JDx, ALq, BLq, CLq, JLx, oldEx1, oldEx2, oldJLx1, oldJLx2,
+    )
+end
+
+
 struct Model1D_PLRC{F, S, T, R, A, AP} <: Model1D
     field :: F
     source :: S
@@ -447,13 +552,13 @@ function Model1D_PLRC(
         dchi0 = chi0 * (1 - Cr)
         dksi0 = ksi0 * (1 - Cr)
     elseif typeof(chi) <: DrudeSusceptibility
-        (; wq, gammaq) = chi
+        (; wpq, gammaq) = chi
         Cr = exp(-gammaq * dt)
-        chi0 = wq^2 / gammaq * dt - wq^2 / gammaq^2 * (1 - Cr)
-        ksi0 = wq^2 / gammaq * dt / 2 -
-            wq^2 / gammaq^3 / dt * (1 - (1 + gammaq * dt) * Cr)
-        dchi0 = -wq^2 / gammaq^2 * (1 - Cr)^2
-        dksi0 = -wq^2 / gammaq^3 / dt * (1 - (1 + gammaq*dt) * Cr) * (1 - Cr)
+        chi0 = wpq^2 / gammaq * dt - wpq^2 / gammaq^2 * (1 - Cr)
+        ksi0 = wpq^2 / gammaq * dt / 2 -
+            wpq^2 / gammaq^3 / dt * (1 - (1 + gammaq * dt) * Cr)
+        dchi0 = -wpq^2 / gammaq^2 * (1 - Cr)^2
+        dksi0 = -wpq^2 / gammaq^3 / dt * (1 - (1 + gammaq*dt) * Cr) * (1 - Cr)
     elseif typeof(chi) <: LorentzSusceptibility
         (; depsq, wq, deltaq) = chi
         alphaq = deltaq
@@ -581,6 +686,47 @@ function update_E!(model::Model1D_ADE_LorentzMulti)
     end
     return nothing
 end
+
+
+function update_E!(model::Model1D_ADE_DrudeLorentz)
+    (; field, Me1, Me2, Me3, Kz, psiHyz) = model
+    (; ADq, BDq, JDx, ALq, BLq, CLq, JLx, oldEx1, oldEx2, oldJLx1, oldJLx2) = model
+    (; Ex, dHyz) = field
+    Nq, Nz = size(JLx)
+    for iz=1:Nz
+        oldEx2[iz] = oldEx1[iz]
+        oldEx1[iz] = Ex[iz]
+        sumJLx = 0.0
+        for iq=1:Nq
+            oldJLx2[iq,iz] = oldJLx1[iq,iz]
+            oldJLx1[iq,iz] = JLx[iq,iz]
+            sumJLx += (
+                (1 + ALq[iq,iz]) * JLx[iq,iz] + BLq[iq,iz] * oldJLx2[iq,iz]
+            )
+        end
+        Ex[iz] = Me1[iz] * Ex[iz] +
+                 Me2[iz] * oldEx2[iz] +
+                 Me3[iz] * (
+                    (0 - dHyz[iz]/Kz[iz]) + (0 - psiHyz[iz]) -
+                    (1 + ADq[iz])*JDx[iz]/2 - sumJLx/2
+                 )
+        JDx[iz] = ADq[iz] * JDx[iz] + BDq[iz] * (Ex[iz] + oldEx1[iz])
+        for iq=1:Nq
+            JLx[iq,iz] = ALq[iq,iz] * JLx[iq,iz] +
+                         BLq[iq,iz] * oldJLx2[iq,iz] +
+                         CLq[iq,iz] * (Ex[iz] - oldEx2[iz])
+        end
+    end
+    return nothing
+end
+
+
+# @. oldEx = Ex
+#     @. Ex = Me1 * Ex + Me2 * ((0 - dHyz/Kz) + (0 - psiHyz) - (1 + Aq)/2 * Jx)
+#     @. Jx = Aq * Jx + Bq * (Ex + oldEx)
+
+# JD[it+1] = ADq * JD[it] + BDq * (E[it+1] + oldE)
+#     Jade[it+1] += JD[it+1]
 
 
 function update_E!(model::Model1D_PLRC)
