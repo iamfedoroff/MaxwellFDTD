@@ -20,7 +20,17 @@ struct LorentzSusceptibility{T} <: Susceptibility
     wq :: T
     deltaq :: T
 end
-LorentzSusceptibility(; depsq, wq, deltaq) = LorentzSusceptibility(depsq, wq, deltaq)
+LorentzSusceptibility(; depsq, wq, deltaq) =
+    LorentzSusceptibility(depsq, wq, deltaq)
+
+
+struct LorentzMultiSusceptibility{A} <: Susceptibility
+    depsq :: A
+    wq :: A
+    deltaq :: A
+end
+    LorentzMultiSusceptibility(; depsq, wq, deltaq) =
+        LorentzMultiSusceptibility(depsq, wq, deltaq)
 
 
 # ******************************************************************************

@@ -303,6 +303,96 @@ function Model1D_ADE_Lorentz(
 end
 
 
+struct Model1D_ADE_LorentzMulti{F, S, T, R, A, AL} <: Model1D
+    field :: F
+    source :: S
+    Nt :: Int
+    dt :: T
+    t :: R
+    Mh :: A
+    Me1 :: A
+    Me2 :: A
+    Me3 :: A
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+    ALq :: AL
+    BLq :: AL
+    CLq :: AL
+    JLx :: AL
+    oldEx1 :: A
+    oldEx2 :: A
+    oldJLx1 :: AL
+    oldJLx2 :: AL
+end
+
+@adapt_structure Model1D_ADE_LorentzMulti
+
+
+function Model1D_ADE_LorentzMulti(
+    field::Field1D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0),
+)
+    (; grid) = field
+    (; Nz, dz, z) = grid
+
+    dt = CN / C0 / sqrt(1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # ..........................................................................
+    (; eps, mu, sigma, chi) = material
+    @assert typeof(chi) <: LorentzMultiSusceptibility
+    (; depsq, wq, deltaq) = chi
+
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    aq = @. 2 * deltaq
+    bq = @. wq^2
+    cq = @. EPS0 * depsq * wq^2
+    Aq = @. (2 - bq * dt^2) / (aq * dt / 2 + 1)
+    Bq = @. (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
+    Cq = @. cq * dt / 2 / (aq * dt / 2 + 1)
+
+    Nq = length(wq)
+    ALq, BLq, CLq = (zeros(Nq,Nz) for i=1:3)
+    for iz=1:Nz, iq=1:Nq
+        ALq[iq,iz] = @. geometry[iz] * Aq[iq]
+        BLq[iq,iz] = @. geometry[iz] * Bq[iq]
+        CLq[iq,iz] = @. geometry[iz] * Cq[iq]
+    end
+    sumCLq = vec(sum(CLq; dims=1))
+
+    oldEx1, oldEx2 = (zeros(Nz) for i=1:2)
+    oldJLx1, oldJLx2 = (zeros(Nq,Nz) for i=1:2)
+    JLx = zeros(Nq,Nz)
+    # ..........................................................................
+
+    Mh = @. dt / (MU0*mu)
+
+    Me0 = @. (2 * EPS0 * eps + sigma * dt + dt * sumCLq)
+    Me1 = @. (2 * EPS0 * eps - sigma * dt) / Me0
+    Me2 = @. dt * sumCLq / Me0
+    Me3 = @. 2 * dt / Me0
+
+    Kz, Az, Bz = pml(z, pml_box, dt)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+
+    return Model1D_ADE_LorentzMulti(
+        field, source, Nt, dt, t, Mh, Me1, Me2, Me3, Kz, Az, Bz, psiExz, psiHyz,
+        ALq, BLq, CLq, JLx, oldEx1, oldEx2, oldJLx1, oldJLx2,
+    )
+end
+
+
 struct Model1D_PLRC{F, S, T, R, A, AP} <: Model1D
     field :: F
     source :: S
@@ -449,7 +539,8 @@ end
 
 
 function update_E!(model::Model1D_ADE_Lorentz)
-    (; field, Me1, Me2, Me3, Kz, psiHyz, Aq, Bq, Cq, Jx, oldEx1, oldEx2, oldJx1, oldJx2) = model
+    (; field, Me1, Me2, Me3, Kz, psiHyz) = model
+    (; Aq, Bq, Cq, Jx, oldEx1, oldEx2, oldJx1, oldJx2) = model
     (; Ex, dHyz) = field
     @. oldEx2 = oldEx1
     @. oldEx1 = Ex
@@ -459,6 +550,35 @@ function update_E!(model::Model1D_ADE_Lorentz)
             Me2 * oldEx2 +
             Me3 * ((0 - dHyz/Kz) + (0 - psiHyz) - ((1 + Aq)*Jx + Bq*oldJx2)/2)
     @. Jx = Aq * Jx + Bq * oldJx2 + Cq * (Ex - oldEx2)
+    return nothing
+end
+
+
+function update_E!(model::Model1D_ADE_LorentzMulti)
+    (; field, Me1, Me2, Me3, Kz, psiHyz) = model
+    (; ALq, BLq, CLq, JLx, oldEx1, oldEx2, oldJLx1, oldJLx2) = model
+    (; Ex, dHyz) = field
+    Nq, Nz = size(JLx)
+    for iz=1:Nz
+        oldEx2[iz] = oldEx1[iz]
+        oldEx1[iz] = Ex[iz]
+        sumJLx = 0.0
+        for iq=1:Nq
+            oldJLx2[iq,iz] = oldJLx1[iq,iz]
+            oldJLx1[iq,iz] = JLx[iq,iz]
+            sumJLx += (
+                (1 + ALq[iq,iz]) * JLx[iq,iz] + BLq[iq,iz] * oldJLx2[iq,iz]
+            )
+        end
+        Ex[iz] = Me1[iz] * Ex[iz] +
+                 Me2[iz] * oldEx2[iz] +
+                 Me3[iz] * ((0 - dHyz[iz]/Kz[iz]) + (0 - psiHyz[iz]) - sumJLx/2)
+        for iq=1:Nq
+            JLx[iq,iz] = ALq[iq,iz] * JLx[iq,iz] +
+                         BLq[iq,iz] * oldJLx2[iq,iz] +
+                         CLq[iq,iz] * (Ex[iz] - oldEx2[iz])
+        end
+    end
     return nothing
 end
 
