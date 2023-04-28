@@ -8,6 +8,8 @@ struct Field1D{G, T, A} <: Field
     w0 :: T
     # magnetic field comonents:
     Hy :: A
+    # electric field displacement comonents:
+    Dx :: A
     # electric field comonents:
     Ex :: A
     # electric field derivatives:
@@ -21,8 +23,8 @@ end
 
 function Field(grid::Grid1D; w0)
     (; Nz) = grid
-    Hy, Ex, dExz, dHyz = (zeros(Nz) for i=1:4)
-    return Field1D(grid, w0, Hy, Ex, dExz, dHyz)
+    Hy, Dx, Ex, dExz, dHyz = (zeros(Nz) for i=1:5)
+    return Field1D(grid, w0, Hy, Dx, Ex, dExz, dHyz)
 end
 
 

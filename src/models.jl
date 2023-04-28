@@ -77,6 +77,160 @@ end
 abstract type Model1D <: Model end
 
 
+struct Model1D_ADE{F, S, T, R, A} <: Model1D
+    field :: F
+    source :: S
+    Nt :: Int
+    dt :: T
+    t :: R
+    Mh :: A
+    Me :: A
+    Ms :: A
+    Sx :: A
+    Aq :: A
+    Bq :: A
+    Cq :: A
+    Px :: A
+    oldPx1 :: A
+    oldPx2 :: A
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+end
+
+@adapt_structure Model1D_ADE
+
+
+function Model1D_ADE(
+    field::Field1D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0),
+)
+    (; grid) = field
+    (; Nz, dz, z) = grid
+
+    dt = CN / C0 / sqrt(1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # ..........................................................................
+    (; eps, mu, sigma) = material
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+
+    (; chi) = material
+    if typeof(chi) <: DebyeSusceptibility
+        (; depsq, tauq) = chi
+        aq = 1 / tauq
+        bq = EPS0 * depsq / tauq
+        Aq = 1 - aq * dt
+        Bq = 0.0
+        Cq = bq * dt
+    elseif typeof(chi) <: DrudeSusceptibility
+        (; wpq, gammaq) = chi
+        aq = gammaq
+        bq = EPS0 * wpq^2
+        Aq = 2 / (aq * dt / 2 + 1)
+        Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
+        Cq = bq * dt^2 / (aq * dt / 2 + 1)
+    elseif typeof(chi) <: LorentzSusceptibility
+        (; depsq, wq, deltaq) = chi
+        aq = 2 * deltaq
+        bq = wq^2
+        cq = EPS0 * depsq * wq^2
+        Aq = (2 - bq * dt^2) / (aq * dt / 2 + 1)
+        Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
+        Cq = cq * dt^2 / (aq * dt / 2 + 1)
+    end
+    Aq = @. geometry * Aq
+    Bq = @. geometry * Bq
+    Cq = @. geometry * Cq
+
+    Px, oldPx1, oldPx2 = (zeros(Nz) for i=1:3)
+
+    # ..........................................................................
+
+    Mh = @. dt / (MU0*mu)
+    Me = @. 1 / (EPS0*eps + sigma*dt)
+
+    Ms = @. sigma * dt
+    Sx = zeros(Nz)
+
+    Kz, Az, Bz = pml(z, pml_box, dt)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+
+    return Model1D_ADE(
+        field, source, Nt, dt, t, Mh, Me, Ms, Sx, Aq, Bq, Cq, Px, oldPx1, oldPx2,
+        Kz, Az, Bz, psiExz, psiHyz,
+    )
+end
+
+
+function step!(model::Model1D_ADE, it)
+    (; field, source, t) = model
+
+    derivatives_E!(field)
+
+    update_CPML_E!(model)
+
+    update_H!(model)
+
+    derivatives_H!(field)
+
+    update_CPML_H!(model)
+
+    update_D!(model)
+    update_P!(model)
+    update_E!(model)
+    update_S!(model)
+
+    add_source!(field, source, t[it])  # additive source
+
+    return nothing
+end
+
+
+function update_D!(model::Model1D_ADE)
+    (; field, dt, Kz, psiHyz) = model
+    (; Dx, dHyz) = field
+    @. Dx = Dx + dt * ((0 - dHyz/Kz) + (0 - psiHyz))
+    return nothing
+end
+
+
+function update_P!(model::Model1D_ADE)
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
+    (; Ex) = field
+    @. oldPx2 = oldPx1
+    @. oldPx1 = Px
+    @. Px = Aq * Px + Bq * oldPx2 + Cq * Ex
+    return nothing
+end
+
+
+function update_E!(model::Model1D_ADE)
+    (; field, Me, Sx, Px) = model
+    (; Ex, Dx) = field
+    @. Ex = Me * (Dx - Sx - Px)
+    return nothing
+end
+
+
+function update_S!(model::Model1D_ADE)
+    (; field, Ms, Sx) = model
+    (; Ex) = field
+    @. Sx = Sx + Ms * Ex
+    return nothing
+end
+
+
+# ------------------------------------------------------------------------------
 struct Model1D_ADE_Debye{F, S, T, R, A} <: Model1D
     field :: F
     source :: S
