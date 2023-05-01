@@ -212,6 +212,10 @@ struct Field3D{G, T, A} <: Field
     Hx :: A
     Hy :: A
     Hz :: A
+    # electric field displacement comonents:
+    Dx :: A
+    Dy :: A
+    Dz :: A
     # electric field comonents:
     Ex :: A
     Ey :: A
@@ -237,11 +241,12 @@ end
 
 function Field(grid::Grid3D; w0)
     (; Nx, Ny, Nz) = grid
-    Hx, Hy, Hz, Ex, Ey, Ez = (zeros(Nx,Ny,Nz) for i=1:6)
+    Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez = (zeros(Nx,Ny,Nz) for i=1:9)
     dExy, dExz, dEyx, dEyz, dEzx, dEzy = (zeros(Nx,Ny,Nz) for i=1:6)
     dHxy, dHxz, dHyx, dHyz, dHzx, dHzy = (zeros(Nx,Ny,Nz) for i=1:6)
     return Field3D(
-        grid, w0, Hx, Hy, Hz, Ex, Ey, Ez, dExy, dExz, dEyx, dEyz, dEzx, dEzy,
+        grid, w0, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez,
+        dExy, dExz, dEyx, dEyz, dEzx, dEzy,
         dHxy, dHxz, dHyx, dHyz, dHzx, dHzy,
     )
 end

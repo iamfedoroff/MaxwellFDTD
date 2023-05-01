@@ -355,7 +355,6 @@ function Model2D_ADE(
 end
 
 
-
 function step!(model::Model2D_ADE, it)
     (; field, source, t) = model
 
@@ -381,7 +380,7 @@ end
 
 
 function update_D!(model::Model2D_ADE)
-    (; field, dt, Kz, psiHyx, psiHyz) = model
+    (; field, dt, Kx, Kz, psiHyx, psiHyz) = model
     (; Dx, Dz, dHyx, dHyz) = field
     @. Dx = Dx + dt * ((0 - dHyz) + (0 - psiHyz))
     @. Dz = Dz + dt * ((dHyx - 0) + (psiHyx - 0))
@@ -464,25 +463,25 @@ function update_E!(model::Model2D_ADE)
 end
 function update_E!(model::Model2D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
-    Nq, Nx, Ny = size(Px)
+    Nq, Nx, Nz = size(Px)
 
-    # @krun Nx*Ny update_E_kernel!(model)
+    # @krun Nx*Nz update_E_kernel!(model)
 
     # Have to pass specific field since Fcomp in source is Symbol and not isbits
     (; field, Me, Sx, Sz, Px, Pz) = model
-    @krun Nx*Ny update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
+    @krun Nx*Nz update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
 
     return nothing
 end
 # function update_E_kernel!(model::Model2D_ADE)
-function update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
+function update_E_kernel!(field::Field2D, Me, Sx, Sz, Px, Pz)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
     # (; field, Me, Sx, Sz, Px, Pz) = model
     (; Ex, Ez, Dx, Dz) = field
 
-    Nq = size(Px,1)
+    Nq = size(Px, 1)
     ci = CartesianIndices(Ex)
     for ici=id:stride:length(ci)
         ix = ci[ici][1]
@@ -938,95 +937,245 @@ end
 # ******************************************************************************
 # 3D
 # ******************************************************************************
-struct Model3D{F, S, T, R, AH, AE, A1, A2} <: Model
+abstract type Model3D end
+
+
+struct Model3D_ADE{F, S, T, R, A, AP, V} <: Model3D
     field :: F
     source :: S
+    # Time grid:
     Nt :: Int
     dt :: T
     t :: R
-    Mh :: AH
-    Me1 :: AE
-    Me2 :: AE
-    Kx :: A1
-    Ax :: A1
-    Bx :: A1
-    Ky :: A1
-    Ay :: A1
-    By :: A1
-    Kz :: A1
-    Az :: A1
-    Bz :: A1
-    psiExy :: A2
-    psiExz :: A2
-    psiEyx :: A2
-    psiEyz :: A2
-    psiEzx :: A2
-    psiEzy :: A2
-    psiHxy :: A2
-    psiHxz :: A2
-    psiHyx :: A2
-    psiHyz :: A2
-    psiHzx :: A2
-    psiHzy :: A2
+    # Update coefficients for H and E fields:
+    Mh :: A
+    Me :: A
+    # Variables for conductivity calculation:
+    Ms :: A
+    Sx :: A
+    Sy :: A
+    Sz :: A
+    # Variables for ADE dispersion calculation:
+    Aq :: AP
+    Bq :: AP
+    Cq :: AP
+    Px :: AP
+    oldPx1 :: AP
+    oldPx2 :: AP
+    Py :: AP
+    oldPy1 :: AP
+    oldPy2 :: AP
+    Pz :: AP
+    oldPz1 :: AP
+    oldPz2 :: AP
+    # CPML variables:
+    Kx :: V
+    Ax :: V
+    Bx :: V
+    Ky :: V
+    Ay :: V
+    By :: V
+    Kz :: V
+    Az :: V
+    Bz :: V
+    psiExy :: A
+    psiExz :: A
+    psiEyx :: A
+    psiEyz :: A
+    psiEzx :: A
+    psiEzy :: A
+    psiHxy :: A
+    psiHxz :: A
+    psiHyx :: A
+    psiHyz :: A
+    psiHzx :: A
+    psiHzy :: A
 end
 
-@adapt_structure Model3D
+@adapt_structure Model3D_ADE
 
 
-function Model(
+function Model3D_ADE(
     field::Field3D, source;
     tmax,
     CN=1,
-    permittivity=nothing,
-    permeability=nothing,
-    conductivity=nothing,
+    geometry,
+    material,
     pml_box=(0,0,0,0,0,0),
 )
-    (; grid, w0) = field
+    (; grid) = field
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
-    if isnothing(permittivity)
-        eps = 1
-    else
-        eps = [permittivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    end
-    if isnothing(permeability)
-        mu = 1
-    else
-        mu = [permeability(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    end
-    if isnothing(conductivity)
-        sigma = 0
-    else
-        sigma = [conductivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    end
-
+    # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
+    # Permittivity, permeability, and conductivity:
+    (; eps, mu, sigma) = material
+    eps = [geometry[ix,iy,iz] ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    mu = [geometry[ix,iy,iz] ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    sigma = [geometry[ix,iy,iz] ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+
+    # Update coefficients for H and E fields:
     Mh = @. dt / (MU0*mu)
+    Me = @. 1 / (EPS0*eps + sigma*dt)
 
-    Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
-    Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
-    Me2 = @. 2*dt / Me0
-    # Me3 = @. CJsum / Me0
+    # Variables for conductivity calculation:
+    Ms = @. sigma * dt
+    Sx = zeros(Nx,Ny,Nz)
+    Sy = zeros(Nx,Ny,Nz)
+    Sz = zeros(Nx,Ny,Nz)
 
+    # Variables for ADE dispersion calculation:
+    (; chi) = material
+    Nq = length(chi)
+    Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+    for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
+        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+        Aq[iq,ix,iy,iz] = geometry[ix,iy,iz] * Aq0
+        Bq[iq,ix,iy,iz] = geometry[ix,iy,iz] * Bq0
+        Cq[iq,ix,iy,iz] = geometry[ix,iy,iz] * Cq0
+    end
+    Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+    Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+    Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+
+    # CPML variables:
     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
     Ky, Ay, By = pml(y, pml_box[3:4], dt)
     Kz, Az, Bz = pml(z, pml_box[5:6], dt)
-
     psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
     psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
 
-    return Model3D(
-        field, source, Nt, dt, t, Mh, Me1, Me2,
+    return Model3D_ADE(
+        field, source, Nt, dt, t, Mh, Me, Ms, Sx, Sy, Sz,
+        Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
         Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
         psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
         psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
     )
+end
+
+
+
+
+
+
+# struct Model3D{F, S, T, R, AH, AE, A1, A2} <: Model
+#     field :: F
+#     source :: S
+#     Nt :: Int
+#     dt :: T
+#     t :: R
+#     Mh :: AH
+#     Me1 :: AE
+#     Me2 :: AE
+#     Kx :: A1
+#     Ax :: A1
+#     Bx :: A1
+#     Ky :: A1
+#     Ay :: A1
+#     By :: A1
+#     Kz :: A1
+#     Az :: A1
+#     Bz :: A1
+#     psiExy :: A2
+#     psiExz :: A2
+#     psiEyx :: A2
+#     psiEyz :: A2
+#     psiEzx :: A2
+#     psiEzy :: A2
+#     psiHxy :: A2
+#     psiHxz :: A2
+#     psiHyx :: A2
+#     psiHyz :: A2
+#     psiHzx :: A2
+#     psiHzy :: A2
+# end
+
+# @adapt_structure Model3D
+
+
+# function Model(
+#     field::Field3D, source;
+#     tmax,
+#     CN=1,
+#     permittivity=nothing,
+#     permeability=nothing,
+#     conductivity=nothing,
+#     pml_box=(0,0,0,0,0,0),
+# )
+#     (; grid, w0) = field
+#     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
+
+#     if isnothing(permittivity)
+#         eps = 1
+#     else
+#         eps = [permittivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+#     end
+#     if isnothing(permeability)
+#         mu = 1
+#     else
+#         mu = [permeability(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+#     end
+#     if isnothing(conductivity)
+#         sigma = 0
+#     else
+#         sigma = [conductivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+#     end
+
+#     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
+#     Nt = ceil(Int, tmax / dt)
+#     t = range(0, tmax, Nt)
+
+#     Mh = @. dt / (MU0*mu)
+
+#     Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
+#     Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
+#     Me2 = @. 2*dt / Me0
+#     # Me3 = @. CJsum / Me0
+
+#     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
+#     Ky, Ay, By = pml(y, pml_box[3:4], dt)
+#     Kz, Az, Bz = pml(z, pml_box[5:6], dt)
+
+#     psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
+#     psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
+
+#     return Model3D(
+#         field, source, Nt, dt, t, Mh, Me1, Me2,
+#         Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
+#         psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
+#         psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
+#     )
+#     return nothing
+# end
+
+
+function step!(model::Model3D_ADE, it)
+    (; field, source, t) = model
+
+    derivatives_E!(field)
+
+    update_CPML_E!(model)
+
+    update_H!(model)
+
+    derivatives_H!(field)
+
+    update_CPML_H!(model)
+
+    update_D!(model)
+    update_P!(model)
+    update_E!(model)
+    update_S!(model)
+
+    add_source!(field, source, t[it])  # additive source
+
     return nothing
 end
+
 
 
 function update_CPML_E!(model::Model3D)
@@ -1071,16 +1220,154 @@ function update_H!(model::Model3D)
 end
 
 
-function update_E!(model::Model3D)
-    (; field, Me1, Me2, Kx, Ky, Kz) = model
+function update_D!(model::Model3D_ADE)
+    (; field, dt, Kx, Ky, Kz) = model
     (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
-    (; Ex, Ey, Ez, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
-    @. Ex = Me1 * Ex + Me2 * (dHzy - dHyz) + Me2 * (psiHzy - psiHyz)
-    @. Ey = Me1 * Ey + Me2 * (dHxz - dHzx) + Me2 * (psiHxz - psiHzx)
-    @. Ez = Me1 * Ez + Me2 * (dHyx - dHxy) + Me2 * (psiHyx - psiHxy)
-    # @. Ex = Me1 * Ex + Me2 * (dHzy / Ky - dHyz / Kz) + Me2 * (psiHzy - psiHyz)
-    # @. Ey = Me1 * Ey + Me2 * (dHxz / Kz - dHzx / Kx) + Me2 * (psiHxz - psiHzx)
-    # @. Ez = Me1 * Ez + Me2 * (dHyx / Kx - dHxy / Ky) + Me2 * (psiHyx - psiHxy)
+    (; Dx, Dy, Dz, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
+    @. Dx = Dx + dt * ((dHzy - dHyz) + (psiHzy - psiHyz))
+    @. Dy = Dy + dt * ((dHxz - dHzx) + (psiHxz - psiHzx))
+    @. Dz = Dz + dt * ((dHyx - dHxy) + (psiHyx - psiHxy))
+    return nothing
+end
+
+
+function update_P!(model::Model3D_ADE)
+    (; field, Aq, Bq, Cq) = model
+    (; Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
+    (; Ex, Ey, Ez) = field
+    Nq, Nx, Ny, Nz = size(Px)
+    for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
+        oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
+        oldPx1[iq,ix,iy,iz] = Px[iq,ix,iy,iz]
+        Px[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Px[iq,ix,iy,iz] +
+                          Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
+                          Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
+        oldPy2[iq,ix,iy,iz] = oldPy1[iq,ix,iy,iz]
+        oldPy1[iq,ix,iy,iz] = Py[iq,ix,iy,iz]
+        Py[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Py[iq,ix,iy,iz] +
+                          Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
+                          Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
+        oldPz2[iq,ix,iy,iz] = oldPz1[iq,ix,iy,iz]
+        oldPz1[iq,ix,iy,iz] = Pz[iq,ix,iy,iz]
+        Pz[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Pz[iq,ix,iy,iz] +
+                          Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
+                          Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
+    end
+    return nothing
+end
+function update_P!(model::Model3D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+    (; Px) = model
+    N = length(Px)
+
+    # @krun N update_P_kernel!(model)
+
+    # Have to pass specific field since Fcomp in source is Symbol and not isbits
+    (; field, Aq, Bq, Cq) = model
+    (; Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
+    @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2)
+    return nothing
+end
+# function update_P_kernel!(model::Model3D_ADE)
+function update_P_kernel!(
+    field::Field3D, Aq, Bq, Cq,
+    Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
+)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+
+    (; Ex, Ey, Ez) = field
+    ci = CartesianIndices(Px)
+    for ici=id:stride:length(ci)
+        iq = ci[ici][1]
+        ix = ci[ici][2]
+        iy = ci[ici][3]
+        iz = ci[ici][4]
+        oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
+        oldPx1[iq,ix,iy,iz] = Px[iq,ix,iy,iz]
+        Px[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Px[iq,ix,iy,iz] +
+                          Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
+                          Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
+        oldPy2[iq,ix,iy,iz] = oldPy1[iq,ix,iy,iz]
+        oldPy1[iq,ix,iy,iz] = Py[iq,ix,iy,iz]
+        Py[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Py[iq,ix,iy,iz] +
+                          Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
+                          Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
+        oldPz2[iq,ix,iy,iz] = oldPz1[iq,ix,iy,iz]
+        oldPz1[iq,ix,iy,iz] = Pz[iq,ix,iy,iz]
+        Pz[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Pz[iq,ix,iy,iz] +
+                          Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
+                          Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
+    end
+    return nothing
+end
+
+
+
+function update_E!(model::Model3D_ADE)
+    (; field, Me, Sx, Sy, Sz, Px, Py, Pz) = model
+    (; Ex, Ey, Ez, Dx, Dy, Dz) = field
+    Nq, Nx, Ny, Nz = size(Px)
+    for iz=1:Nz, iy=1:Ny, ix=1:Nx
+        sumPx = zero(eltype(Px))
+        sumPy = zero(eltype(Py))
+        sumPz = zero(eltype(Pz))
+        for iq=1:Nq
+            sumPx += Px[iq,ix,iy,iz]
+            sumPy += Py[iq,ix,iy,iz]
+            sumPz += Pz[iq,ix,iy,iz]
+        end
+        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - Sx[ix,iy,iz] - sumPx)
+        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - Sy[ix,iy,iz] - sumPy)
+        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - Sz[ix,iy,iz] - sumPz)
+    end
+    return nothing
+end
+function update_E!(model::Model3D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+    (; Px) = model
+    Nq, Nx, Ny, Nz = size(Px)
+
+    # @krun Nx*Ny*Nz update_E_kernel!(model)
+
+    # Have to pass specific field since Fcomp in source is Symbol and not isbits
+    (; field, Me, Sx, Sy, Sz, Px, Py, Pz) = model
+    @krun Nx*Ny*Nz update_E_kernel!(field, Me, Sx, Sy, Sz, Px, Py, Pz)
+
+    return nothing
+end
+# function update_E_kernel!(model::Model3D_ADE)
+function update_E_kernel!(field::Field3D, Me, Sx, Sy, Sz, Px, Py, Pz)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+
+    (; Ex, Ey, Ez, Dx, Dy, Dz) = field
+    Nq = size(Px, 1)
+    ci = CartesianIndices(Ex)
+    for ici=id:stride:length(ci)
+        ix = ci[ici][1]
+        iy = ci[ici][2]
+        iz = ci[ici][3]
+        sumPx = zero(eltype(Px))
+        sumPy = zero(eltype(Py))
+        sumPz = zero(eltype(Pz))
+        for iq=1:Nq
+            sumPx += Px[iq,ix,iy,iz]
+            sumPy += Py[iq,ix,iy,iz]
+            sumPz += Pz[iq,ix,iy,iz]
+        end
+        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - Sx[ix,iy,iz] - sumPx)
+        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - Sy[ix,iy,iz] - sumPy)
+        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - Sz[ix,iy,iz] - sumPz)
+    end
+    return nothing
+end
+
+
+function update_S!(model::Model3D_ADE)
+    (; field, Ms, Sx, Sy, Sz) = model
+    (; Ex, Ey, Ez) = field
+    @. Sx = Sx + Ms * Ex
+    @. Sy = Sy + Ms * Ey
+    @. Sz = Sz + Ms * Ez
     return nothing
 end
 
