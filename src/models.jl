@@ -88,7 +88,6 @@ struct Model1D{F, S, T, R, A, AP}
     Ms :: A
     Sx :: A
     # Variables for ADE dispersion calculation:
-    Nq :: Int
     Aq :: AP
     Bq :: AP
     Cq :: AP
@@ -148,14 +147,13 @@ function Model(
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
 
-
     # CPML variables:
     Kz, Az, Bz = pml(z, pml_box, dt)
     psiExz, psiHyz = zeros(Nz), zeros(Nz)
 
     return Model1D(
         field, source, Nt, dt, t, Mh, Me, Ms, Sx,
-        Nq, Aq, Bq, Cq, Px, oldPx1, oldPx2, Kz, Az, Bz, psiExz, psiHyz,
+        Aq, Bq, Cq, Px, oldPx1, oldPx2, Kz, Az, Bz, psiExz, psiHyz,
     )
 end
 
@@ -260,6 +258,259 @@ end
 abstract type Model2D end
 
 
+struct Model2D_ADE{F, S, T, R, A, AP, V} <: Model2D
+    field :: F
+    source :: S
+    # Time grid:
+    Nt :: Int
+    dt :: T
+    t :: R
+    # Update coefficients for H and E fields:
+    Mh :: A
+    Me :: A
+    # Variables for conductivity calculation:
+    Ms :: A
+    Sx :: A
+    Sz :: A
+    # Variables for ADE dispersion calculation:
+    Aq :: AP
+    Bq :: AP
+    Cq :: AP
+    Px :: AP
+    oldPx1 :: AP
+    oldPx2 :: AP
+    Pz :: AP
+    oldPz1 :: AP
+    oldPz2 :: AP
+    # CPML variables:
+    Kx :: V
+    Ax :: V
+    Bx :: V
+    Kz :: V
+    Az :: V
+    Bz :: V
+    psiExz :: A
+    psiEzx :: A
+    psiHyx :: A
+    psiHyz :: A
+end
+
+@adapt_structure Model2D_ADE
+
+
+function Model2D_ADE(
+    field::Field2D, source;
+    tmax,
+    CN=1,
+    geometry,
+    material,
+    pml_box=(0,0,0,0),
+)
+    (; grid) = field
+    (; Nx, Nz, dx, dz, x, z) = grid
+
+    # Time grid:
+    dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    # Permittivity, permeability, and conductivity:
+    (; eps, mu, sigma) = material
+    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
+    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
+    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
+
+    # Update coefficients for H and E fields:
+    Mh = @. dt / (MU0*mu)
+    Me = @. 1 / (EPS0*eps + sigma*dt)
+
+    # Variables for conductivity calculation:
+    Ms = @. sigma * dt
+    Sx = zeros(Nx,Nz)
+    Sz = zeros(Nx,Nz)
+
+    # Variables for ADE dispersion calculation:
+    (; chi) = material
+    Nq = length(chi)
+    Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
+    for iz=1:Nz, ix=1:Nx, iq=1:Nq
+        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+        Aq[iq,ix,iz] = geometry[ix,iz] * Aq0
+        Bq[iq,ix,iz] = geometry[ix,iz] * Bq0
+        Cq[iq,ix,iz] = geometry[ix,iz] * Cq0
+    end
+    Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
+    Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
+
+    # CPML variables:
+    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
+    Kz, Az, Bz = pml(z, pml_box[3:4], dt)
+    psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
+
+    return Model2D_ADE(
+        field, source, Nt, dt, t, Mh, Me, Ms, Sx, Sz,
+        Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
+        Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx, psiHyx, psiHyz,
+    )
+end
+
+
+
+function step!(model::Model2D_ADE, it)
+    (; field, source, t) = model
+
+    derivatives_E!(field)
+
+    update_CPML_E!(model)
+
+    update_H!(model)
+
+    derivatives_H!(field)
+
+    update_CPML_H!(model)
+
+    update_D!(model)
+    update_P!(model)
+    update_E!(model)
+    update_S!(model)
+
+    add_source!(field, source, t[it])  # additive source
+
+    return nothing
+end
+
+
+function update_D!(model::Model2D_ADE)
+    (; field, dt, Kz, psiHyx, psiHyz) = model
+    (; Dx, Dz, dHyx, dHyz) = field
+    @. Dx = Dx + dt * ((0 - dHyz) + (0 - psiHyz))
+    @. Dz = Dz + dt * ((dHyx - 0) + (psiHyx - 0))
+    return nothing
+end
+
+
+function update_P!(model::Model2D_ADE)
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; Ex, Ez) = field
+    Nq, Nx, Nz = size(Px)
+    for iz=1:Nz, ix=1:Nx, iq=1:Nq
+        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
+        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
+        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ex[ix,iz]
+        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
+        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
+        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ez[ix,iz]
+    end
+    return nothing
+end
+function update_P!(model::Model2D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+    (; Px) = model
+    N = length(Px)
+
+    # @krun N update_P_kernel!(model)
+
+    # Have to pass specific field since Fcomp in source is Symbol and not isbits
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
+    return nothing
+end
+# function update_P_kernel!(model::Model2D_ADE)
+function update_P_kernel!(field::Field2D, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+
+    # (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; Ex, Ez) = field
+
+    ci = CartesianIndices(Px)
+    for ici=id:stride:length(ci)
+        iq = ci[ici][1]
+        ix = ci[ici][2]
+        iz = ci[ici][3]
+        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
+        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
+        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ex[ix,iz]
+        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
+        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
+        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ez[ix,iz]
+    end
+    return nothing
+end
+
+
+function update_E!(model::Model2D_ADE)
+    (; field, Me, Sx, Sz, Px, Pz) = model
+    (; Ex, Ez, Dx, Dz) = field
+    Nq, Nx, Nz = size(Px)
+    for iz=1:Nz, ix=1:Nx
+        sumPx = zero(eltype(Px))
+        sumPz = zero(eltype(Pz))
+        for iq=1:Nq
+            sumPx += Px[iq,ix,iz]
+            sumPz += Pz[iq,ix,iz]
+        end
+        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
+        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
+    end
+    return nothing
+end
+function update_E!(model::Model2D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+    (; Px) = model
+    Nq, Nx, Ny = size(Px)
+
+    # @krun Nx*Ny update_E_kernel!(model)
+
+    # Have to pass specific field since Fcomp in source is Symbol and not isbits
+    (; field, Me, Sx, Sz, Px, Pz) = model
+    @krun Nx*Ny update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
+
+    return nothing
+end
+# function update_E_kernel!(model::Model2D_ADE)
+function update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+
+    # (; field, Me, Sx, Sz, Px, Pz) = model
+    (; Ex, Ez, Dx, Dz) = field
+
+    Nq = size(Px,1)
+    ci = CartesianIndices(Ex)
+    for ici=id:stride:length(ci)
+        ix = ci[ici][1]
+        iz = ci[ici][2]
+        sumPx = zero(eltype(Px))
+        sumPz = zero(eltype(Pz))
+        for iq=1:Nq
+            sumPx += Px[iq,ix,iz]
+            sumPz += Pz[iq,ix,iz]
+        end
+        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
+        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
+    end
+    return nothing
+end
+
+
+function update_S!(model::Model2D_ADE)
+    (; field, Ms, Sx, Sz) = model
+    (; Ex, Ez) = field
+    @. Sx = Sx + Ms * Ex
+    @. Sz = Sz + Ms * Ez
+    return nothing
+end
+
+
+
+
 struct Model2D_ADE_Drude{F, S, T, R, A, V} <: Model2D
     field :: F
     source :: S
@@ -307,6 +558,7 @@ function Model2D_ADE_Drude(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: DrudeSusceptibility
     (; wpq, gammaq) = chi
 
@@ -396,6 +648,7 @@ function Model2D_ADE_Lorentz(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: LorentzSusceptibility
     (; depsq, wq, deltaq) = chi
 

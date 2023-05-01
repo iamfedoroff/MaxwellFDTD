@@ -64,6 +64,9 @@ struct Field2D{G, T, A} <: Field
     w0 :: T
     # magnetic field comonents:
     Hy :: A
+    # electric field displacement comonents:
+    Dx :: A
+    Dz :: A
     # electric field comonents:
     Ex :: A
     Ez :: A
@@ -80,8 +83,8 @@ end
 
 function Field(grid::Grid2D; w0)
     (; Nx, Nz) = grid
-    Hy, Ex, Ez, dExz, dEzx, dHyx, dHyz = (zeros(Nx,Nz) for i=1:7)
-    return Field2D(grid, w0, Hy, Ex, Ez, dExz, dEzx, dHyx, dHyz)
+    Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz = (zeros(Nx,Nz) for i=1:9)
+    return Field2D(grid, w0, Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz)
 end
 
 
