@@ -77,22 +77,28 @@ end
 abstract type Model1D <: Model end
 
 
-struct Model1D_ADE{F, S, T, R, A} <: Model1D
+struct Model1D_ADE{F, S, T, R, A, AP} <: Model1D
     field :: F
     source :: S
+    # Time grid:
     Nt :: Int
     dt :: T
     t :: R
+    # Update coefficients for H and E fields:
     Mh :: A
     Me :: A
+    # Variables for conductivity calculation:
     Ms :: A
     Sx :: A
-    Aq :: A
-    Bq :: A
-    Cq :: A
-    Px :: A
-    oldPx1 :: A
-    oldPx2 :: A
+    # Variables for ADE dispersion calculation:
+    Nq :: Int
+    Aq :: AP
+    Bq :: AP
+    Cq :: AP
+    Px :: AP
+    oldPx1 :: AP
+    oldPx2 :: AP
+    # CPML variables:
     Kz :: A
     Az :: A
     Bz :: A
@@ -114,60 +120,45 @@ function Model1D_ADE(
     (; grid) = field
     (; Nz, dz, z) = grid
 
+    # Time grid:
     dt = CN / C0 / sqrt(1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
 
-    # ..........................................................................
+    # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
     eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
     mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
     sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
 
-    (; chi) = material
-    if typeof(chi) <: DebyeSusceptibility
-        (; depsq, tauq) = chi
-        aq = 1 / tauq
-        bq = EPS0 * depsq / tauq
-        Aq = 1 - aq * dt
-        Bq = 0.0
-        Cq = bq * dt
-    elseif typeof(chi) <: DrudeSusceptibility
-        (; wpq, gammaq) = chi
-        aq = gammaq
-        bq = EPS0 * wpq^2
-        Aq = 2 / (aq * dt / 2 + 1)
-        Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
-        Cq = bq * dt^2 / (aq * dt / 2 + 1)
-    elseif typeof(chi) <: LorentzSusceptibility
-        (; depsq, wq, deltaq) = chi
-        aq = 2 * deltaq
-        bq = wq^2
-        cq = EPS0 * depsq * wq^2
-        Aq = (2 - bq * dt^2) / (aq * dt / 2 + 1)
-        Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
-        Cq = cq * dt^2 / (aq * dt / 2 + 1)
-    end
-    Aq = @. geometry * Aq
-    Bq = @. geometry * Bq
-    Cq = @. geometry * Cq
-
-    Px, oldPx1, oldPx2 = (zeros(Nz) for i=1:3)
-
-    # ..........................................................................
-
+    # Update coefficients for H and E fields:
     Mh = @. dt / (MU0*mu)
     Me = @. 1 / (EPS0*eps + sigma*dt)
 
+    # Variables for conductivity calculation:
     Ms = @. sigma * dt
     Sx = zeros(Nz)
 
+    # Variables for ADE dispersion calculation:
+    (; chi) = material
+    Nq = length(chi)
+    Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
+    for iz=1:Nz, iq=1:Nq
+        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+        Aq[iq,iz] = geometry[iz] * Aq0
+        Bq[iq,iz] = geometry[iz] * Bq0
+        Cq[iq,iz] = geometry[iz] * Cq0
+    end
+    Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
+
+
+    # CPML variables:
     Kz, Az, Bz = pml(z, pml_box, dt)
     psiExz, psiHyz = zeros(Nz), zeros(Nz)
 
     return Model1D_ADE(
-        field, source, Nt, dt, t, Mh, Me, Ms, Sx, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-        Kz, Az, Bz, psiExz, psiHyz,
+        field, source, Nt, dt, t, Mh, Me, Ms, Sx,
+        Nq, Aq, Bq, Cq, Px, oldPx1, oldPx2, Kz, Az, Bz, psiExz, psiHyz,
     )
 end
 
@@ -207,9 +198,14 @@ end
 function update_P!(model::Model1D_ADE)
     (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
     (; Ex) = field
-    @. oldPx2 = oldPx1
-    @. oldPx1 = Px
-    @. Px = Aq * Px + Bq * oldPx2 + Cq * Ex
+    Nq, Nz = size(Px)
+    for iz=1:Nz, iq=1:Nq
+        oldPx2[iq,iz] = oldPx1[iq,iz]
+        oldPx1[iq,iz] = Px[iq,iz]
+        Px[iq,iz] = Aq[iq,iz] * Px[iq,iz] +
+                    Bq[iq,iz] * oldPx2[iq,iz] +
+                    Cq[iq,iz] * Ex[iz]
+    end
     return nothing
 end
 
@@ -217,7 +213,14 @@ end
 function update_E!(model::Model1D_ADE)
     (; field, Me, Sx, Px) = model
     (; Ex, Dx) = field
-    @. Ex = Me * (Dx - Sx - Px)
+    Nq, Nz = size(Px)
+    for iz=1:Nz
+        sumPx = zero(eltype(Px))
+        for iq=1:Nq
+            sumPx += Px[iq,iz]
+        end
+        Ex[iz] = Me[iz] * (Dx[iz] - Sx[iz] - sumPx)
+    end
     return nothing
 end
 
@@ -271,6 +274,7 @@ function Model1D_ADE_Debye(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: DebyeSusceptibility
     (; depsq, tauq) = chi
 
@@ -344,6 +348,7 @@ function Model1D_ADE_Drude(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: DrudeSusceptibility
     (; wpq, gammaq) = chi
 
@@ -422,6 +427,7 @@ function Model1D_ADE_Lorentz(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: LorentzSusceptibility
     (; depsq, wq, deltaq) = chi
 
@@ -504,6 +510,7 @@ function Model1D_ADE_LorentzMulti(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: LorentzMultiSusceptibility
     (; depsq, wq, deltaq) = chi
 
@@ -597,6 +604,7 @@ function Model1D_ADE_DrudeLorentz(
 
     # ..........................................................................
     (; eps, mu, sigma, chi) = material
+    chi = chi[1]
     @assert typeof(chi) <: DrudeLorentzSusceptibility
     (; wpq, gammaq, depsq, wq, deltaq) = chi
 
