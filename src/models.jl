@@ -1,39 +1,75 @@
 abstract type Model end
 
 
+# function step!(model, it)
+#     (; field, source, t) = model
+
+#     @timeit "derivatives E" begin
+#         derivatives_E!(field)
+#         synchronize()
+#     end
+#     @timeit "update CPML E" begin
+#         update_CPML_E!(model)
+#         synchronize()
+#     end
+#     @timeit "update H" begin
+#         update_H!(model)
+#         synchronize()
+#     end
+
+#     @timeit "derivatives H" begin
+#         derivatives_H!(field)
+#         synchronize()
+#     end
+#     @timeit "update CPML H" begin
+#         update_CPML_H!(model)
+#         synchronize()
+#     end
+#     @timeit "update D" begin
+#         update_D!(model)
+#         synchronize()
+#     end
+#     @timeit "update P" begin
+#         update_P!(model)
+#         synchronize()
+#     end
+#     @timeit "update E" begin
+#         update_E!(model)
+#         synchronize()
+#     end
+#     @timeit "update S" begin
+#         update_S!(model)
+#         synchronize()
+#     end
+
+#     @timeit "add_source" begin
+#         add_source!(field, source, t[it])  # additive source
+#         synchronize()
+#     end
+#     return nothing
+# end
+
+
 function step!(model, it)
     (; field, source, t) = model
 
-    @timeit "derivatives E" begin
-        derivatives_E!(field)
-        synchronize()
-    end
-    @timeit "update CPML E" begin
-        update_CPML_E!(model)
-        synchronize()
-    end
-    @timeit "update H" begin
-        update_H!(model)
-        synchronize()
-    end
+    derivatives_E!(field)
 
-    @timeit "derivatives H" begin
-        derivatives_H!(field)
-        synchronize()
-    end
-    @timeit "update CPML H" begin
-        update_CPML_H!(model)
-        synchronize()
-    end
-    @timeit "update E" begin
-        update_E!(model)
-        synchronize()
-    end
+    update_CPML_E!(model)
 
-    @timeit "add_source" begin
-        add_source!(field, source, t[it])  # additive source
-        synchronize()
-    end
+    update_H!(model)
+
+    derivatives_H!(field)
+
+    update_CPML_H!(model)
+
+    update_D!(model)
+    update_P!(model)
+    update_E!(model)
+    update_S!(model)
+
+    add_source!(field, source, t[it])  # additive source
+
     return nothing
 end
 
@@ -228,37 +264,10 @@ function update_S!(model::Model1D)
 end
 
 
-function step!(model::Model1D, it)
-    (; field, source, t) = model
-
-    derivatives_E!(field)
-
-    update_CPML_E!(model)
-
-    update_H!(model)
-
-    derivatives_H!(field)
-
-    update_CPML_H!(model)
-
-    update_D!(model)
-    update_P!(model)
-    update_E!(model)
-    update_S!(model)
-
-    add_source!(field, source, t[it])  # additive source
-
-    return nothing
-end
-
-
 # ******************************************************************************
 # 2D
 # ******************************************************************************
-abstract type Model2D end
-
-
-struct Model2D_ADE{F, S, T, R, A, AP, V} <: Model2D
+struct Model2D{F, S, T, R, A, AP, V}
     field :: F
     source :: S
     # Time grid:
@@ -295,10 +304,10 @@ struct Model2D_ADE{F, S, T, R, A, AP, V} <: Model2D
     psiHyz :: A
 end
 
-@adapt_structure Model2D_ADE
+@adapt_structure Model2D
 
 
-function Model2D_ADE(
+function Model(
     field::Field2D, source;
     tmax,
     CN=1,
@@ -347,466 +356,10 @@ function Model2D_ADE(
     Kz, Az, Bz = pml(z, pml_box[3:4], dt)
     psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
 
-    return Model2D_ADE(
+    return Model2D(
         field, source, Nt, dt, t, Mh, Me, Ms, Sx, Sz,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
         Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx, psiHyx, psiHyz,
-    )
-end
-
-
-function step!(model::Model2D_ADE, it)
-    (; field, source, t) = model
-
-    derivatives_E!(field)
-
-    update_CPML_E!(model)
-
-    update_H!(model)
-
-    derivatives_H!(field)
-
-    update_CPML_H!(model)
-
-    update_D!(model)
-    update_P!(model)
-    update_E!(model)
-    update_S!(model)
-
-    add_source!(field, source, t[it])  # additive source
-
-    return nothing
-end
-
-
-function update_D!(model::Model2D_ADE)
-    (; field, dt, Kx, Kz, psiHyx, psiHyz) = model
-    (; Dx, Dz, dHyx, dHyz) = field
-    @. Dx = Dx + dt * ((0 - dHyz) + (0 - psiHyz))
-    @. Dz = Dz + dt * ((dHyx - 0) + (psiHyx - 0))
-    return nothing
-end
-
-
-function update_P!(model::Model2D_ADE)
-    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; Ex, Ez) = field
-    Nq, Nx, Nz = size(Px)
-    for iz=1:Nz, ix=1:Nx, iq=1:Nq
-        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
-        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
-        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ex[ix,iz]
-        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
-        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
-        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ez[ix,iz]
-    end
-    return nothing
-end
-function update_P!(model::Model2D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
-    (; Px) = model
-    N = length(Px)
-
-    # @krun N update_P_kernel!(model)
-
-    # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
-    return nothing
-end
-# function update_P_kernel!(model::Model2D_ADE)
-function update_P_kernel!(field::Field2D, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
-    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    stride = blockDim().x * gridDim().x
-
-    # (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; Ex, Ez) = field
-
-    ci = CartesianIndices(Px)
-    for ici=id:stride:length(ci)
-        iq = ci[ici][1]
-        ix = ci[ici][2]
-        iz = ci[ici][3]
-        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
-        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
-        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ex[ix,iz]
-        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
-        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
-        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ez[ix,iz]
-    end
-    return nothing
-end
-
-
-function update_E!(model::Model2D_ADE)
-    (; field, Me, Sx, Sz, Px, Pz) = model
-    (; Ex, Ez, Dx, Dz) = field
-    Nq, Nx, Nz = size(Px)
-    for iz=1:Nz, ix=1:Nx
-        sumPx = zero(eltype(Px))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            sumPx += Px[iq,ix,iz]
-            sumPz += Pz[iq,ix,iz]
-        end
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
-    end
-    return nothing
-end
-function update_E!(model::Model2D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
-    (; Px) = model
-    Nq, Nx, Nz = size(Px)
-
-    # @krun Nx*Nz update_E_kernel!(model)
-
-    # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Me, Sx, Sz, Px, Pz) = model
-    @krun Nx*Nz update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
-
-    return nothing
-end
-# function update_E_kernel!(model::Model2D_ADE)
-function update_E_kernel!(field::Field2D, Me, Sx, Sz, Px, Pz)
-    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    stride = blockDim().x * gridDim().x
-
-    # (; field, Me, Sx, Sz, Px, Pz) = model
-    (; Ex, Ez, Dx, Dz) = field
-
-    Nq = size(Px, 1)
-    ci = CartesianIndices(Ex)
-    for ici=id:stride:length(ci)
-        ix = ci[ici][1]
-        iz = ci[ici][2]
-        sumPx = zero(eltype(Px))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            sumPx += Px[iq,ix,iz]
-            sumPz += Pz[iq,ix,iz]
-        end
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
-    end
-    return nothing
-end
-
-
-function update_S!(model::Model2D_ADE)
-    (; field, Ms, Sx, Sz) = model
-    (; Ex, Ez) = field
-    @. Sx = Sx + Ms * Ex
-    @. Sz = Sz + Ms * Ez
-    return nothing
-end
-
-
-
-
-struct Model2D_ADE_Drude{F, S, T, R, A, V} <: Model2D
-    field :: F
-    source :: S
-    Nt :: Int
-    dt :: T
-    t :: R
-    Mh :: A
-    Me1 :: A
-    Me2 :: A
-    Kx :: V
-    Ax :: V
-    Bx :: V
-    Kz :: V
-    Az :: V
-    Bz :: V
-    psiExz :: A
-    psiEzx :: A
-    psiHyx :: A
-    psiHyz :: A
-    Aq :: A
-    Bq :: A
-    Jx :: A
-    Jz :: A
-    oldEx :: A
-    oldEz :: A
-end
-
-@adapt_structure Model2D_ADE_Drude
-
-
-function Model2D_ADE_Drude(
-    field::Field2D, source;
-    tmax,
-    CN=1,
-    geometry,
-    material,
-    pml_box=(0,0,0,0),
-)
-    (; grid) = field
-    (; Nx, Nz, dx, dz, x, z) = grid
-
-    dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    # ..........................................................................
-    (; eps, mu, sigma, chi) = material
-    chi = chi[1]
-    @assert typeof(chi) <: DrudeSusceptibility
-    (; wpq, gammaq) = chi
-
-    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
-
-    aq = gammaq
-    bq = EPS0 * wpq^2
-    Aq = (1 - aq * dt / 2) / (1 + aq * dt / 2)
-    Bq = bq * dt / 2 / (1 + aq * dt / 2)
-    Aq = @. geometry * Aq
-    Bq = @. geometry * Bq
-    Jx, Jz, oldEx, oldEz = (zeros(Nx,Nz) for i=1:4)
-    # ..........................................................................
-
-    Mh = @. dt / (MU0*mu)
-
-    Me0 = @. 2*EPS0*eps + sigma*dt + dt*Bq
-    Me1 = @. (2*EPS0*eps - sigma*dt - dt*Bq) / Me0
-    Me2 = @. 2*dt / Me0
-
-    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
-    Kz, Az, Bz = pml(z, pml_box[3:4], dt)
-
-    psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
-
-    return Model2D_ADE_Drude(
-        field, source, Nt, dt, t, Mh, Me1, Me2, Kx, Ax, Bx, Kz, Az, Bz,
-        psiExz, psiEzx, psiHyx, psiHyz, Aq, Bq, Jx, Jz, oldEx, oldEz,
-    )
-end
-
-
-struct Model2D_ADE_Lorentz{F, S, T, R, A, V} <: Model2D
-    field :: F
-    source :: S
-    Nt :: Int
-    dt :: T
-    t :: R
-    Mh :: A
-    Me1 :: A
-    Me2 :: A
-    Me3 :: A
-    Kx :: V
-    Ax :: V
-    Bx :: V
-    Kz :: V
-    Az :: V
-    Bz :: V
-    psiExz :: A
-    psiEzx :: A
-    psiHyx :: A
-    psiHyz :: A
-    Aq :: A
-    Bq :: A
-    Cq :: A
-    Jx :: A
-    Jz :: A
-    oldEx1 :: A
-    oldEx2 :: A
-    oldEz1 :: A
-    oldEz2 :: A
-    oldJx1 :: A
-    oldJx2 :: A
-    oldJz1 :: A
-    oldJz2 :: A
-end
-
-@adapt_structure Model2D_ADE_Lorentz
-
-
-function Model2D_ADE_Lorentz(
-    field::Field2D, source;
-    tmax,
-    CN=1,
-    geometry,
-    material,
-    pml_box=(0,0,0,0),
-)
-    (; grid) = field
-    (; Nx, Nz, dx, dz, x, z) = grid
-
-    dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    # ..........................................................................
-    (; eps, mu, sigma, chi) = material
-    chi = chi[1]
-    @assert typeof(chi) <: LorentzSusceptibility
-    (; depsq, wq, deltaq) = chi
-
-    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
-
-    aq = 2 * deltaq
-    bq = wq^2
-    cq = EPS0 * depsq * wq^2
-    Aq = (2 - bq * dt^2) / (aq * dt / 2 + 1)
-    Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
-    Cq = cq * dt / 2 / (aq * dt / 2 + 1)
-    Aq = @. geometry * Aq
-    Bq = @. geometry * Bq
-    Cq = @. geometry * Cq
-    Jx, Jz, oldEx1, oldEx2, oldEz1, oldEz2, oldJx1, oldJx2, oldJz1, oldJz2 =
-        (zeros(Nx,Nz) for i=1:10)
-    # ..........................................................................
-
-    Mh = @. dt / (MU0*mu)
-
-    Me0 = @. 2*EPS0*eps + sigma*dt + dt*Cq
-    Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
-    Me2 = @. dt*Cq / Me0
-    Me3 = @. 2*dt / Me0
-
-    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
-    Kz, Az, Bz = pml(z, pml_box[3:4], dt)
-
-    psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
-
-    return Model2D_ADE_Lorentz(
-        field, source, Nt, dt, t, Mh, Me1, Me2, Me3, Kx, Ax, Bx, Kz, Az, Bz,
-        psiExz, psiEzx, psiHyx, psiHyz,
-        Aq, Bq, Cq, Jx, Jz,
-        oldEx1, oldEx2, oldEz1, oldEz2, oldJx1, oldJx2, oldJz1, oldJz2,
-    )
-end
-
-
-struct Model2D_ADE_DrudeLorentz{F, S, T, R, A, V, AL} <: Model2D
-    field :: F
-    source :: S
-    Nt :: Int
-    dt :: T
-    t :: R
-    Mh :: A
-    Me1 :: A
-    Me2 :: A
-    Me3 :: A
-    Kx :: V
-    Ax :: V
-    Bx :: V
-    Kz :: V
-    Az :: V
-    Bz :: V
-    psiExz :: A
-    psiEzx :: A
-    psiHyx :: A
-    psiHyz :: A
-    ADq :: A
-    BDq :: A
-    JDx :: A
-    JDz :: A
-    ALq :: AL
-    BLq :: AL
-    CLq :: AL
-    JLx :: AL
-    JLz :: AL
-    oldEx1 :: A
-    oldEx2 :: A
-    oldEz1 :: A
-    oldEz2 :: A
-    oldJLx1 :: AL
-    oldJLx2 :: AL
-    oldJLz1 :: AL
-    oldJLz2 :: AL
-end
-
-@adapt_structure Model2D_ADE_DrudeLorentz
-
-
-function Model2D_ADE_DrudeLorentz(
-    field::Field2D, source;
-    tmax,
-    CN=1,
-    geometry,
-    material,
-    pml_box=(0,0,0,0),
-)
-    (; grid) = field
-    (; Nx, Nz, dx, dz, x, z) = grid
-
-    dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    # ..........................................................................
-    (; eps, mu, sigma, chi) = material
-    @assert typeof(chi) <: DrudeLorentzSusceptibility
-    (; wpq, gammaq, depsq, wq, deltaq) = chi
-
-    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
-
-    # Drude ....................................................................
-    aq = gammaq
-    bq = EPS0 * wpq^2
-    Aq = (1 - aq * dt / 2) / (1 + aq * dt / 2)
-    Bq = bq * dt / 2 / (1 + aq * dt / 2)
-
-    ADq = @. geometry * Aq
-    BDq = @. geometry * Bq
-
-    JDx = zeros(Nx,Nz)
-    JDz = zeros(Nx,Nz)
-
-    # Lorentz ..................................................................
-    aq = @. 2 * deltaq
-    bq = @. wq^2
-    cq = @. EPS0 * depsq * wq^2
-    Aq = @. (2 - bq * dt^2) / (aq * dt / 2 + 1)
-    Bq = @. (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
-    Cq = @. cq * dt / 2 / (aq * dt / 2 + 1)
-
-    Nq = length(wq)
-    ALq, BLq, CLq = (zeros(Nq,Nx,Nz) for i=1:3)
-    for iz=1:Nz, ix=1:Nx, iq=1:Nq
-        ALq[iq,ix,iz] = geometry[ix,iz] * Aq[iq]
-        BLq[iq,ix,iz] = geometry[ix,iz] * Bq[iq]
-        CLq[iq,ix,iz] = geometry[ix,iz] * Cq[iq]
-    end
-    sumCLq = dropdims(sum(CLq, dims=1); dims=1)
-
-    oldEx1, oldEx2, oldEz1, oldEz2 = (zeros(Nx,Nz) for i=1:4)
-    oldJLx1, oldJLx2, oldJLz1, oldJLz2 = (zeros(Nq,Nx,Nz) for i=1:4)
-    JLx = zeros(Nq,Nx,Nz)
-    JLz = zeros(Nq,Nx,Nz)
-    # ..........................................................................
-
-    Mh = @. dt / (MU0*mu)
-
-    Me0 = @. (2*EPS0*eps + sigma*dt + dt*BDq + dt*sumCLq)
-    Me1 = @. (2*EPS0*eps - sigma*dt - dt*BDq) / Me0
-    Me2 = @. dt * sumCLq / Me0
-    Me3 = @. 2 * dt / Me0
-
-    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
-    Kz, Az, Bz = pml(z, pml_box[3:4], dt)
-
-    psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
-
-    return Model2D_ADE_DrudeLorentz(
-        field, source, Nt, dt, t, Mh, Me1, Me2, Me3, Kx, Ax, Bx, Kz, Az, Bz,
-        psiExz, psiEzx, psiHyx, psiHyz,
-        ADq, BDq, JDx, JDz, ALq, BLq, CLq, JLx, JLz,
-        oldEx1, oldEx2, oldEz1, oldEz2, oldJLx1, oldJLx2, oldJLz1, oldJLz2,
     )
 end
 
@@ -838,98 +391,131 @@ function update_H!(model::Model2D)
 end
 
 
-function update_E!(model::Model2D_ADE_Drude)
-    (; field, Me1, Me2, Kx, Kz, psiHyz, psiHyx) = model
-    (; Aq, Bq, Jx, Jz, oldEx, oldEz) = model
-    (; Ex, Ez, dHyz, dHyx) = field
-    @. oldEx = Ex
-    @. oldEz = Ez
-    @. Ex = Me1 * Ex + Me2 * ((0 - dHyz) + (0 - psiHyz) - (1 + Aq)/2 * Jx)
-    @. Ez = Me1 * Ez + Me2 * ((dHyx - 0) + (psiHyx - 0) - (1 + Aq)/2 * Jz)
-    @. Jx = Aq * Jx + Bq * (Ex - oldEx)
-    @. Jz = Aq * Jz + Bq * (Ez - oldEz)
+function update_D!(model::Model2D)
+    (; field, dt, Kx, Kz, psiHyx, psiHyz) = model
+    (; Dx, Dz, dHyx, dHyz) = field
+    @. Dx = Dx + dt * ((0 - dHyz) + (0 - psiHyz))
+    @. Dz = Dz + dt * ((dHyx - 0) + (psiHyx - 0))
     return nothing
 end
 
 
-function update_E!(model::Model2D_ADE_Lorentz)
-    (; field, Me1, Me2, Me3, Kx, Kz, psiHyz, psiHyx) = model
-    (; Aq, Bq, Cq, Jx, Jz) = model
-    (; oldEx1, oldEx2, oldEz1, oldEz2, oldJx1, oldJx2, oldJz1, oldJz2) = model
-    (; Ex, Ez, dHyz, dHyx) = field
-    @. oldEx2 = oldEx1
-    @. oldEx1 = Ex
-    @. oldEz2 = oldEz1
-    @. oldEz1 = Ez
-    @. oldJx2 = oldJx1
-    @. oldJx1 = Jx
-    @. oldJz2 = oldJz1
-    @. oldJz1 = Jz
-    @. Ex = Me1 * Ex +
-            Me2 * oldEx2 +
-            Me3 * ((0 - dHyz) + (0 - psiHyz) - ((1 + Aq)*Jx + Bq*oldJx2)/2)
-    @. Ez = Me1 * Ez +
-            Me2 * oldEz2 +
-            Me3 * ((dHyx - 0) + (psiHyx - 0) - ((1 + Aq)*Jz + Bq*oldJz2)/2)
-    @. Jx = Aq * Jx + Bq * oldJx2 + Cq * (Ex - oldEx2)
-    @. Jz = Aq * Jz + Bq * oldJz2 + Cq * (Ez - oldEz2)
-    return nothing
-end
-
-
-function update_E!(model::Model2D_ADE_DrudeLorentz)
-    (; field, Me1, Me2, Me3, Kx, Kz, psiHyz, psiHyx) = model
-    (; ADq, BDq, JDx, JDz) = model
-    (; ALq, BLq, CLq, JLx, JLz) = model
-    (; oldEx1, oldEx2, oldEz1, oldEz2, oldJLx1, oldJLx2, oldJLz1, oldJLz2) = model
-    (; Ex, Ez, dHyz, dHyx) = field
-
-    Nq, Nx, Nz = size(JLx)
-    for iz=1:Nz, ix=1:Nx
-        oldEx2[ix,iz] = oldEx1[ix,iz]
-        oldEx1[ix,iz] = Ex[ix,iz]
-        oldEz2[ix,iz] = oldEz1[ix,iz]
-        oldEz1[ix,iz] = Ez[ix,iz]
-
-        sumJLx = 0.0
-        sumJLz = 0.0
-        for iq=1:Nq
-            oldJLx2[iq,ix,iz] = oldJLx1[iq,ix,iz]
-            oldJLx1[iq,ix,iz] = JLx[iq,ix,iz]
-            sumJLx += (1 + ALq[iq,ix,iz])*JLx[iq,ix,iz] + BLq[iq,ix,iz]*oldJLx2[iq,ix,iz]
-            oldJLz2[iq,ix,iz] = oldJLz1[iq,ix,iz]
-            oldJLz1[iq,ix,iz] = JLz[iq,ix,iz]
-            sumJLz += (1 + ALq[iq,ix,iz])*JLz[iq,ix,iz] + BLq[iq,ix,iz]*oldJLz2[iq,ix,iz]
-        end
-
-        Ex[ix,iz] = Me1[ix,iz] * Ex[ix,iz] +
-                    Me2[ix,iz] * oldEx2[ix,iz] +
-                    Me3[ix,iz] * (
-                        (0 - dHyz[ix,iz]) + (0 - psiHyz[ix,iz]) -
-                        (1 + ADq[ix,iz])/2 * JDx[ix,iz] - sumJLx/2
-                    )
-        Ez[ix,iz] = Me1[ix,iz] * Ez[ix,iz] +
-                    Me2[ix,iz] * oldEz2[ix,iz] +
-                    Me3[ix,iz] * (
-                        (dHyx[ix,iz] - 0) + (psiHyx[ix,iz] - 0) -
-                        (1 + ADq[ix,iz])/2 * JDz[ix,iz] - sumJLz/2
-                    )
-
-        JDx[ix,iz] = ADq[ix,iz] * JDx[ix,iz] +
-                     BDq[ix,iz] * (Ex[ix,iz] - oldEx1[ix,iz])
-        JDz[ix,iz] = ADq[ix,iz] * JDz[ix,iz] +
-                     BDq[ix,iz] * (Ez[ix,iz] - oldEz1[ix,iz])
-
-        for iq=1:Nq
-            JLx[iq,ix,iz] = ALq[iq,ix,iz] * JLx[iq,ix,iz] +
-                            BLq[iq,ix,iz] * oldJLx2[iq,ix,iz] +
-                            CLq[iq,ix,iz] * (Ex[ix,iz] - oldEx2[ix,iz])
-            JLz[iq,ix,iz] = ALq[iq,ix,iz] * JLz[iq,ix,iz] +
-                            BLq[iq,ix,iz] * oldJLz2[iq,ix,iz] +
-                            CLq[iq,ix,iz] * (Ez[ix,iz] - oldEz2[ix,iz])
-        end
+function update_P!(model::Model2D)
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; Ex, Ez) = field
+    Nq, Nx, Nz = size(Px)
+    for iz=1:Nz, ix=1:Nx, iq=1:Nq
+        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
+        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
+        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ex[ix,iz]
+        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
+        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
+        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ez[ix,iz]
     end
+    return nothing
+end
+function update_P!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+    (; Px) = model
+    N = length(Px)
 
+    # @krun N update_P_kernel!(model)
+
+    # Have to pass specific field since Fcomp in source is Symbol and not isbits
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
+    return nothing
+end
+# function update_P_kernel!(model::Model2D)
+function update_P_kernel!(field::Field2D, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+
+    # (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; Ex, Ez) = field
+
+    ci = CartesianIndices(Px)
+    for ici=id:stride:length(ci)
+        iq = ci[ici][1]
+        ix = ci[ici][2]
+        iz = ci[ici][3]
+        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
+        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
+        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ex[ix,iz]
+        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
+        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
+        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
+                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
+                       Cq[iq,ix,iz] * Ez[ix,iz]
+    end
+    return nothing
+end
+
+
+function update_E!(model::Model2D)
+    (; field, Me, Sx, Sz, Px, Pz) = model
+    (; Ex, Ez, Dx, Dz) = field
+    Nq, Nx, Nz = size(Px)
+    for iz=1:Nz, ix=1:Nx
+        sumPx = zero(eltype(Px))
+        sumPz = zero(eltype(Pz))
+        for iq=1:Nq
+            sumPx += Px[iq,ix,iz]
+            sumPz += Pz[iq,ix,iz]
+        end
+        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
+        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
+    end
+    return nothing
+end
+function update_E!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+    (; Px) = model
+    Nq, Nx, Nz = size(Px)
+
+    # @krun Nx*Nz update_E_kernel!(model)
+
+    # Have to pass specific field since Fcomp in source is Symbol and not isbits
+    (; field, Me, Sx, Sz, Px, Pz) = model
+    @krun Nx*Nz update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
+
+    return nothing
+end
+# function update_E_kernel!(model::Model2D)
+function update_E_kernel!(field::Field2D, Me, Sx, Sz, Px, Pz)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+
+    # (; field, Me, Sx, Sz, Px, Pz) = model
+    (; Ex, Ez, Dx, Dz) = field
+
+    Nq = size(Px, 1)
+    ci = CartesianIndices(Ex)
+    for ici=id:stride:length(ci)
+        ix = ci[ici][1]
+        iz = ci[ici][2]
+        sumPx = zero(eltype(Px))
+        sumPz = zero(eltype(Pz))
+        for iq=1:Nq
+            sumPx += Px[iq,ix,iz]
+            sumPz += Pz[iq,ix,iz]
+        end
+        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
+        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
+    end
+    return nothing
+end
+
+
+function update_S!(model::Model2D)
+    (; field, Ms, Sx, Sz) = model
+    (; Ex, Ez) = field
+    @. Sx = Sx + Ms * Ex
+    @. Sz = Sz + Ms * Ez
     return nothing
 end
 
@@ -937,10 +523,7 @@ end
 # ******************************************************************************
 # 3D
 # ******************************************************************************
-abstract type Model3D end
-
-
-struct Model3D_ADE{F, S, T, R, A, AP, V} <: Model3D
+struct Model3D{F, S, T, R, A, AP, V}
     field :: F
     source :: S
     # Time grid:
@@ -992,10 +575,10 @@ struct Model3D_ADE{F, S, T, R, A, AP, V} <: Model3D
     psiHzy :: A
 end
 
-@adapt_structure Model3D_ADE
+@adapt_structure Model3D
 
 
-function Model3D_ADE(
+function Model(
     field::Field3D, source;
     tmax,
     CN=1,
@@ -1048,7 +631,7 @@ function Model3D_ADE(
     psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
     psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
 
-    return Model3D_ADE(
+    return Model3D(
         field, source, Nt, dt, t, Mh, Me, Ms, Sx, Sy, Sz,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
         Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
@@ -1056,126 +639,6 @@ function Model3D_ADE(
         psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
     )
 end
-
-
-
-
-
-
-# struct Model3D{F, S, T, R, AH, AE, A1, A2} <: Model
-#     field :: F
-#     source :: S
-#     Nt :: Int
-#     dt :: T
-#     t :: R
-#     Mh :: AH
-#     Me1 :: AE
-#     Me2 :: AE
-#     Kx :: A1
-#     Ax :: A1
-#     Bx :: A1
-#     Ky :: A1
-#     Ay :: A1
-#     By :: A1
-#     Kz :: A1
-#     Az :: A1
-#     Bz :: A1
-#     psiExy :: A2
-#     psiExz :: A2
-#     psiEyx :: A2
-#     psiEyz :: A2
-#     psiEzx :: A2
-#     psiEzy :: A2
-#     psiHxy :: A2
-#     psiHxz :: A2
-#     psiHyx :: A2
-#     psiHyz :: A2
-#     psiHzx :: A2
-#     psiHzy :: A2
-# end
-
-# @adapt_structure Model3D
-
-
-# function Model(
-#     field::Field3D, source;
-#     tmax,
-#     CN=1,
-#     permittivity=nothing,
-#     permeability=nothing,
-#     conductivity=nothing,
-#     pml_box=(0,0,0,0,0,0),
-# )
-#     (; grid, w0) = field
-#     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
-
-#     if isnothing(permittivity)
-#         eps = 1
-#     else
-#         eps = [permittivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-#     end
-#     if isnothing(permeability)
-#         mu = 1
-#     else
-#         mu = [permeability(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-#     end
-#     if isnothing(conductivity)
-#         sigma = 0
-#     else
-#         sigma = [conductivity(x[ix],y[iy],z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-#     end
-
-#     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
-#     Nt = ceil(Int, tmax / dt)
-#     t = range(0, tmax, Nt)
-
-#     Mh = @. dt / (MU0*mu)
-
-#     Me0 = @. 2*EPS0*eps + sigma*dt # + CJsum
-#     Me1 = @. (2*EPS0*eps - sigma*dt) / Me0
-#     Me2 = @. 2*dt / Me0
-#     # Me3 = @. CJsum / Me0
-
-#     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
-#     Ky, Ay, By = pml(y, pml_box[3:4], dt)
-#     Kz, Az, Bz = pml(z, pml_box[5:6], dt)
-
-#     psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
-#     psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
-
-#     return Model3D(
-#         field, source, Nt, dt, t, Mh, Me1, Me2,
-#         Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
-#         psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
-#         psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
-#     )
-#     return nothing
-# end
-
-
-function step!(model::Model3D_ADE, it)
-    (; field, source, t) = model
-
-    derivatives_E!(field)
-
-    update_CPML_E!(model)
-
-    update_H!(model)
-
-    derivatives_H!(field)
-
-    update_CPML_H!(model)
-
-    update_D!(model)
-    update_P!(model)
-    update_E!(model)
-    update_S!(model)
-
-    add_source!(field, source, t[it])  # additive source
-
-    return nothing
-end
-
 
 
 function update_CPML_E!(model::Model3D)
@@ -1220,7 +683,7 @@ function update_H!(model::Model3D)
 end
 
 
-function update_D!(model::Model3D_ADE)
+function update_D!(model::Model3D)
     (; field, dt, Kx, Ky, Kz) = model
     (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
     (; Dx, Dy, Dz, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
@@ -1231,7 +694,7 @@ function update_D!(model::Model3D_ADE)
 end
 
 
-function update_P!(model::Model3D_ADE)
+function update_P!(model::Model3D)
     (; field, Aq, Bq, Cq) = model
     (; Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
     (; Ex, Ey, Ez) = field
@@ -1255,7 +718,7 @@ function update_P!(model::Model3D_ADE)
     end
     return nothing
 end
-function update_P!(model::Model3D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+function update_P!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
     N = length(Px)
 
@@ -1267,7 +730,7 @@ function update_P!(model::Model3D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray
     @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2)
     return nothing
 end
-# function update_P_kernel!(model::Model3D_ADE)
+# function update_P_kernel!(model::Model3D)
 function update_P_kernel!(
     field::Field3D, Aq, Bq, Cq,
     Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
@@ -1302,8 +765,7 @@ function update_P_kernel!(
 end
 
 
-
-function update_E!(model::Model3D_ADE)
+function update_E!(model::Model3D)
     (; field, Me, Sx, Sy, Sz, Px, Py, Pz) = model
     (; Ex, Ey, Ez, Dx, Dy, Dz) = field
     Nq, Nx, Ny, Nz = size(Px)
@@ -1322,7 +784,7 @@ function update_E!(model::Model3D_ADE)
     end
     return nothing
 end
-function update_E!(model::Model3D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+function update_E!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
     Nq, Nx, Ny, Nz = size(Px)
 
@@ -1334,7 +796,7 @@ function update_E!(model::Model3D_ADE{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray
 
     return nothing
 end
-# function update_E_kernel!(model::Model3D_ADE)
+# function update_E_kernel!(model::Model3D)
 function update_E_kernel!(field::Field3D, Me, Sx, Sy, Sz, Px, Py, Pz)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
@@ -1362,7 +824,7 @@ function update_E_kernel!(field::Field3D, Me, Sx, Sy, Sz, Px, Py, Pz)
 end
 
 
-function update_S!(model::Model3D_ADE)
+function update_S!(model::Model3D)
     (; field, Ms, Sx, Sy, Sz) = model
     (; Ex, Ey, Ez) = field
     @. Sx = Sx + Ms * Ex
