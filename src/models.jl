@@ -159,9 +159,9 @@ function Model(
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
-    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
-    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
-    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
+    eps = [geometry(z[iz]) ? eps : 1 for iz=1:Nz]
+    mu = [geometry(z[iz]) ? mu : 1 for iz=1:Nz]
+    sigma = [geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
 
     # Update coefficients for H and E fields:
     Mh = @. dt / (MU0*mu)
@@ -177,9 +177,9 @@ function Model(
     Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
     for iz=1:Nz, iq=1:Nq
         Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,iz] = geometry[iz] * Aq0
-        Bq[iq,iz] = geometry[iz] * Bq0
-        Cq[iq,iz] = geometry[iz] * Cq0
+        Aq[iq,iz] = geometry(z[iz]) * Aq0
+        Bq[iq,iz] = geometry(z[iz]) * Bq0
+        Cq[iq,iz] = geometry(z[iz]) * Cq0
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
 
@@ -325,9 +325,9 @@ function Model(
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
-    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
+    eps = [geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
+    mu = [geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
+    sigma = [geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
 
     # Update coefficients for H and E fields:
     Mh = @. dt / (MU0*mu)
@@ -344,9 +344,9 @@ function Model(
     Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
     for iz=1:Nz, ix=1:Nx, iq=1:Nq
         Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,ix,iz] = geometry[ix,iz] * Aq0
-        Bq[iq,ix,iz] = geometry[ix,iz] * Bq0
-        Cq[iq,ix,iz] = geometry[ix,iz] * Cq0
+        Aq[iq,ix,iz] = geometry(x[ix],z[iz]) * Aq0
+        Bq[iq,ix,iz] = geometry(x[ix],z[iz]) * Bq0
+        Cq[iq,ix,iz] = geometry(x[ix],z[iz]) * Cq0
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
     Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
@@ -596,9 +596,9 @@ function Model(
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
-    eps = [geometry[ix,iy,iz] ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    mu = [geometry[ix,iy,iz] ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    sigma = [geometry[ix,iy,iz] ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    eps = [geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    mu = [geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    sigma = [geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
 
     # Update coefficients for H and E fields:
     Mh = @. dt / (MU0*mu)
@@ -616,9 +616,9 @@ function Model(
     Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
         Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,ix,iy,iz] = geometry[ix,iy,iz] * Aq0
-        Bq[iq,ix,iy,iz] = geometry[ix,iy,iz] * Bq0
-        Cq[iq,ix,iy,iz] = geometry[ix,iy,iz] * Cq0
+        Aq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Aq0
+        Bq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Bq0
+        Cq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Cq0
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
