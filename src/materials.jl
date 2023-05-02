@@ -2,34 +2,34 @@ abstract type Susceptibility end
 
 
 struct DebyeSusceptibility{T} <: Susceptibility
-    depsq :: T
-    tauq :: T
+    deps :: T
+    tau :: T
 end
 
 
-DebyeSusceptibility(; depsq, tauq) =
-    DebyeSusceptibility(promote(depsq, tauq)...)
+DebyeSusceptibility(; deps, tau) =
+    DebyeSusceptibility(promote(deps, tau)...)
 
 
 struct DrudeSusceptibility{T} <: Susceptibility
-    wpq :: T
-    gammaq :: T
+    wp :: T
+    gamma :: T
 end
 
 
-DrudeSusceptibility(; wpq, gammaq) =
-    DrudeSusceptibility(promote(wpq, gammaq)...)
+DrudeSusceptibility(; wp, gamma) =
+    DrudeSusceptibility(promote(wp, gamma)...)
 
 
 struct LorentzSusceptibility{T} <: Susceptibility
-    depsq :: T
-    wq :: T
-    deltaq :: T
+    deps :: T
+    w0 :: T
+    delta :: T
 end
 
 
-LorentzSusceptibility(; depsq, wq, deltaq) =
-    LorentzSusceptibility(promote(depsq, wq, deltaq)...)
+LorentzSusceptibility(; deps, w0, delta) =
+    LorentzSusceptibility(promote(deps, w0, delta)...)
 
 
 # ******************************************************************************
@@ -53,9 +53,9 @@ end
 
 # ******************************************************************************
 function ade_coefficients(chi::DebyeSusceptibility, dt)
-    (; depsq, tauq) = chi
-    aq = 1 / tauq
-    bq = EPS0 * depsq / tauq
+    (; deps, tau) = chi
+    aq = 1 / tau
+    bq = EPS0 * deps / tau
     Aq = 1 - aq * dt
     Bq = 0.0
     Cq = bq * dt
@@ -64,9 +64,9 @@ end
 
 
 function ade_coefficients(chi::DrudeSusceptibility, dt)
-    (; wpq, gammaq) = chi
-    aq = gammaq
-    bq = EPS0 * wpq^2
+    (; wp, gamma) = chi
+    aq = gamma
+    bq = EPS0 * wp^2
     Aq = 2 / (aq * dt / 2 + 1)
     Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
     Cq = bq * dt^2 / (aq * dt / 2 + 1)
@@ -75,10 +75,10 @@ end
 
 
 function ade_coefficients(chi::LorentzSusceptibility, dt)
-    (; depsq, wq, deltaq) = chi
-    aq = 2 * deltaq
-    bq = wq^2
-    cq = EPS0 * depsq * wq^2
+    (; deps, w0, delta) = chi
+    aq = 2 * delta
+    bq = w0^2
+    cq = EPS0 * deps * w0^2
     Aq = (2 - bq * dt^2) / (aq * dt / 2 + 1)
     Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
     Cq = cq * dt^2 / (aq * dt / 2 + 1)
