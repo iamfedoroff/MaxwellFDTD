@@ -3,9 +3,8 @@ abstract type Field end
 # ******************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************
-struct Field1D{G, T, A} <: Field
+struct Field1D{G, A} <: Field
     grid :: G
-    w0 :: T
     # magnetic field comonents:
     Hy :: A
     # electric field displacement comonents:
@@ -21,10 +20,10 @@ end
 @adapt_structure Field1D
 
 
-function Field(grid::Grid1D; w0)
+function Field(grid::Grid1D)
     (; Nz) = grid
     Hy, Dx, Ex, dExz, dHyz = (zeros(Nz) for i=1:5)
-    return Field1D(grid, w0, Hy, Dx, Ex, dExz, dHyz)
+    return Field1D(grid, Hy, Dx, Ex, dExz, dHyz)
 end
 
 
@@ -59,9 +58,8 @@ end
 # ******************************************************************************
 # 2D
 # ******************************************************************************
-struct Field2D{G, T, A} <: Field
+struct Field2D{G, A} <: Field
     grid :: G
-    w0 :: T
     # magnetic field comonents:
     Hy :: A
     # electric field displacement comonents:
@@ -81,10 +79,10 @@ end
 @adapt_structure Field2D
 
 
-function Field(grid::Grid2D; w0)
+function Field(grid::Grid2D)
     (; Nx, Nz) = grid
     Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz = (zeros(Nx,Nz) for i=1:9)
-    return Field2D(grid, w0, Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz)
+    return Field2D(grid, Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz)
 end
 
 
@@ -112,7 +110,7 @@ function derivatives_E!(field::Field2D)
 end
 
 
-function derivatives_E!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
+function derivatives_E!(field::Field2D{G,A}) where {G,A<:CuArray}
     (; Ex) = field
     N = length(Ex)
     @krun N derivatives_E_kernel!(field)
@@ -166,7 +164,7 @@ function derivatives_H!(field::Field2D)
 end
 
 
-function derivatives_H!(field::Field2D{G,T,A}) where {G,T,A<:CuArray}
+function derivatives_H!(field::Field2D{G,A}) where {G,A<:CuArray}
     (; Hy) = field
     N = length(Hy)
     @krun N derivatives_H_kernel!(field)
@@ -205,9 +203,8 @@ end
 # ******************************************************************************
 # 3D
 # ******************************************************************************
-struct Field3D{G, T, A} <: Field
+struct Field3D{G, A} <: Field
     grid :: G
-    w0 :: T
     # magnetic field comonents:
     Hx :: A
     Hy :: A
@@ -239,13 +236,13 @@ end
 @adapt_structure Field3D
 
 
-function Field(grid::Grid3D; w0)
+function Field(grid::Grid3D)
     (; Nx, Ny, Nz) = grid
     Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez = (zeros(Nx,Ny,Nz) for i=1:9)
     dExy, dExz, dEyx, dEyz, dEzx, dEzy = (zeros(Nx,Ny,Nz) for i=1:6)
     dHxy, dHxz, dHyx, dHyz, dHzx, dHzy = (zeros(Nx,Ny,Nz) for i=1:6)
     return Field3D(
-        grid, w0, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez,
+        grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez,
         dExy, dExz, dEyx, dEyz, dEzx, dEzy,
         dHxy, dHxz, dHyx, dHyz, dHzx, dHzy,
     )
@@ -278,7 +275,7 @@ function derivatives_E!(field::Field3D)
 end
 
 
-function derivatives_E!(field::Field3D{G,T,A}) where {G,T,A<:CuArray}
+function derivatives_E!(field::Field3D{G,A}) where {G,A<:CuArray}
     (; Ex) = field
     N = length(Ex)
     @krun N derivatives_E_kenel!(field)
@@ -344,7 +341,7 @@ function derivatives_H!(field::Field3D)
 end
 
 
-function derivatives_H!(field::Field3D{G,T,A}) where {G,T,A<:CuArray}
+function derivatives_H!(field::Field3D{G,A}) where {G,A<:CuArray}
     (; Hx) = field
     N = length(Hx)
     @krun N derivatives_H_kernel!(field)

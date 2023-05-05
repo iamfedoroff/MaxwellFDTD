@@ -144,15 +144,16 @@ end
 
 
 function Model(
-    field::Field1D, source;
+    grid::Grid1D, source;
     tmax,
     CN=1,
     geometry,
     material,
     pml_box=(0,0),
 )
-    (; grid) = field
     (; Nz, dz, z) = grid
+
+    field = Field(grid)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dz^2)
@@ -318,15 +319,16 @@ end
 
 
 function Model(
-    field::Field2D, source;
+    grid::Grid2D, source;
     tmax,
     CN=1,
     geometry,
     material,
     pml_box=(0,0,0,0),
 )
-    (; grid) = field
     (; Nx, Nz, dx, dz, x, z) = grid
+
+    field = Field(grid)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
@@ -598,15 +600,16 @@ end
 
 
 function Model(
-    field::Field3D, source;
+    grid::Grid3D, source;
     tmax,
     CN=1,
     geometry,
     material,
     pml_box=(0,0,0,0,0,0),
 )
-    (; grid) = field
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
+
+    field = Field(grid)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
