@@ -68,7 +68,9 @@ function step!(model, it)
     update_E!(model)
     update_S!(model)
 
-    add_source!(field, source, t[it])  # additive source
+    # update_E_explicit!(model)
+
+    add_source!(field, source, t[it])
 
     return nothing
 end
@@ -252,6 +254,14 @@ function update_E!(model::Model1D)
         end
         Ex[iz] = Me[iz] * (Dx[iz] - Sx[iz] - sumPx)
     end
+    return nothing
+end
+
+
+function update_E_explicit!(model::Model1D)
+    (; field, dt, Me, Kz, psiHyz) = model
+    (; Ex, dHyz) = field
+    @. Ex = Ex + dt * Me * ((0 - dHyz/Kz) + (0 - psiHyz))
     return nothing
 end
 
@@ -507,6 +517,15 @@ function update_E_kernel!(field::Field2D, Me, Sx, Sz, Px, Pz)
         Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
         Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
     end
+    return nothing
+end
+
+
+function update_E_explicit!(model::Model2D)
+    (; field, dt, Me, Kx, Kz, psiHyx, psiHyz) = model
+    (; Ex, Ez, dHyx, dHyz) = field
+    @. Ex = Ex + dt * Me * ((0 - dHyz) + (0 - psiHyz))
+    @. Ez = Ez + dt * Me * ((dHyx - 0) + (psiHyx - 0))
     return nothing
 end
 
@@ -820,6 +839,17 @@ function update_E_kernel!(field::Field3D, Me, Sx, Sy, Sz, Px, Py, Pz)
         Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - Sy[ix,iy,iz] - sumPy)
         Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - Sz[ix,iy,iz] - sumPz)
     end
+    return nothing
+end
+
+
+function update_E_explicit!(model::Model3D)
+    (; field, dt, Me, Kx, Ky, Kz) = model
+    (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
+    (; Ex, Ey, Ez, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
+    @. Ex = Ex + dt * Me * ((dHzy - dHyz) + (psiHzy - psiHyz))
+    @. Ey = Ey + dt * Me * ((dHxz - dHzx) + (psiHxz - psiHzx))
+    @. Ez = Ez + dt * Me * ((dHyx - dHxy) + (psiHyx - psiHxy))
     return nothing
 end
 
