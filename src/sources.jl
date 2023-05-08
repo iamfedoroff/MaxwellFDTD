@@ -1,19 +1,26 @@
-struct Source{C, S, A, F, P}
+struct Source{C, S, A, F, P, T}
     isrc :: C
     component :: S
     Amp :: A
     Phi :: A
     waveform :: F
     p :: P
+    type :: T
 end
 
 @adapt_structure Source
 
 
 function add_source!(field, source, t)
-    (; isrc, component, Amp, Phi, waveform, p) = source
+    (; isrc, component, Amp, Phi, waveform, p, type) = source
     F = getfield(field, component)
-    @views @. F[isrc] += Amp * waveform(t - Phi, (p,))
+    if type == :soft
+        @views @. F[isrc] = F[isrc] + Amp * waveform(t - Phi, (p,))
+    elseif type == :hard
+        @views @. F[isrc] = Amp * waveform(t - Phi, (p,))
+    else
+        error("Wrong source type.")
+    end
     return nothing
 end
 
@@ -22,6 +29,7 @@ end
 function PointSource(
     grid::Grid1D;
     position, component, frequency, amplitude=1, phase=0, waveform, p=(),
+    type=:soft,
 )
     (; z) = grid
 
@@ -33,13 +41,14 @@ function PointSource(
     Phi = phase / frequency
     Amp, Phi = promote(Amp, Phi)
 
-    return Source(isrc, component, Amp, Phi, waveform, p)
+    return Source(isrc, component, Amp, Phi, waveform, p, type)
 end
 
 
 function PointSource(
     grid::Grid2D;
     position, component, frequency, amplitude=1, phase=0, waveform, p=(),
+    type=:soft,
 )
     (; x, z) = grid
 
@@ -52,13 +61,14 @@ function PointSource(
     Phi = phase / frequency
     Amp, Phi = promote(Amp, Phi)
 
-    return Source(isrc, component, Amp, Phi, waveform, p)
+    return Source(isrc, component, Amp, Phi, waveform, p, type)
 end
 
 
 function PointSource(
     grid::Grid3D;
     position, component, frequency, amplitude=1, phase=0, waveform, p=(),
+    type=:soft,
 )
     (; x, y, z) = grid
 
@@ -72,7 +82,7 @@ function PointSource(
     Phi = phase / frequency
     Amp, Phi = promote(Amp, Phi)
 
-    return Source(isrc, component, Amp, Phi, waveform, p)
+    return Source(isrc, component, Amp, Phi, waveform, p, type)
 end
 
 
@@ -80,6 +90,7 @@ end
 function LineSource(
     grid::Grid2D;
     position, component, frequency, amplitude, phase, waveform, p=(),
+    type=:soft,
 )
     (; Nx, x, z) = grid
 
@@ -93,7 +104,7 @@ function LineSource(
         Phi[ix] = phase(x[ix]) / frequency
     end
 
-    return Source(isrc, component, Amp, Phi, waveform, p)
+    return Source(isrc, component, Amp, Phi, waveform, p, type)
 end
 
 
@@ -101,6 +112,7 @@ end
 function PlaneSource(
     grid::Grid3D;
     position, component, frequency, amplitude, phase, waveform, p=(),
+    type=:soft,
 )
     (; Nx, Ny, x, y, z) = grid
 
@@ -114,5 +126,5 @@ function PlaneSource(
         Phi[ix,iy] = phase(x[ix], y[iy]) / frequency
     end
 
-    return Source(isrc, component, Amp, Phi, waveform, p)
+    return Source(isrc, component, Amp, Phi, waveform, p, type)
 end
