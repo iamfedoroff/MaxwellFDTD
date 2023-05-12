@@ -41,10 +41,10 @@ struct Material{T, C}
 end
 
 
-function Material(
-    ; eps, mu, sigma, chi::Union{Susceptibility,Vector{<:Susceptibility}},
-)
-    if chi isa Susceptibility
+function Material(; eps=1, mu=1, sigma=0, chi=nothing)
+    if isnothing(chi)
+        chi = [nothing]
+    elseif chi isa Susceptibility
         chi = [chi]
     end
     return Material(promote(eps, mu, sigma)..., chi)
@@ -52,6 +52,11 @@ end
 
 
 # ******************************************************************************
+function ade_coefficients(chi::Nothing, dt)
+    return 0, 0, 0
+end
+
+
 function ade_coefficients(chi::DebyeSusceptibility, dt)
     (; deps, tau) = chi
     aq = 1 / tau
