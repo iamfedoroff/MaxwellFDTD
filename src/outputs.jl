@@ -1,8 +1,9 @@
-mutable struct Output{S, R}
+mutable struct Output{S, R, A}
     fname :: S
     itout :: Int
     Ntout :: Int
     tout :: R
+    Sa :: A   # averaged poynting vector
 end
 
 
@@ -11,7 +12,7 @@ function Output(
     fname="results/1d_out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
 )
     (; field, Nt, t) = model
-    (; grid) = field
+    (; grid, Ex) = field
 
     if isnothing(nstride) && isnothing(nframes) && isnothing(dtout)
         error("One of 'nstride', 'nframes', or 'dtout' should be specified.")
@@ -48,7 +49,19 @@ function Output(
         prepare_output!(fp, Ntout, grid)
     end
 
-    return Output(fname, itout, Ntout, tout)
+    Sa = zero(Ex)
+
+    return Output(fname, itout, Ntout, tout, Sa)
+end
+
+
+function write_output_values(out, model)
+    (; dt) = model
+    (; fname, Sa) = out
+    HDF5.h5open(fname, "r+") do fp
+        fp["Sa"] = collect(Sa) * dt
+    end
+    return nothing
 end
 
 
@@ -76,6 +89,16 @@ function write_output!(out, model::Model1D)
 end
 
 
+function update_output_variables(out, model::Model1D)
+    (; Sa) = out
+    (; field) = model
+    (; Hy, Ex) = field
+    # averaged poynting vector (multiplied by dt in the end, during writing):
+    @. Sa += sqrt((Ex*Hy)^2)
+    return nothing
+end
+
+
 # ******************************************************************************
 # 2D: d/dy = 0,   (Hy, Ex, Ez)
 # ******************************************************************************
@@ -99,6 +122,16 @@ function write_output!(out, model::Model2D)
         fp["Ex"][:,:,itout] = collect(Ex)
         fp["Ez"][:,:,itout] = collect(Ez)
     end
+    return nothing
+end
+
+
+function update_output_variables(out, model::Model2D)
+    (; Sa) = out
+    (; field) = model
+    (; Hy, Ex, Ez) = field
+    # averaged poynting vector (multiplied by dt in the end, during writing):
+    @. Sa += sqrt((-Ez*Hy)^2 + (Ex*Hy)^2)
     return nothing
 end
 
@@ -133,5 +166,15 @@ function write_output!(out, model::Model3D)
         fp["Ey"][:,:,:,itout] = collect(Ey)
         fp["Ez"][:,:,:,itout] = collect(Ez)
     end
+    return nothing
+end
+
+
+function update_output_variables(out, model::Model3D)
+    (; Sa) = out
+    (; field) = model
+    (; Hx, Hy, Hz, Ex, Ey, Ez) = field
+    # averaged poynting vector (multiplied by dt in the end, during writing):
+    @. Sa += sqrt((Ey*Hz - Ez*Hy)^2 + (Ez*Hx - Ex*Hz)^2 + (Ex*Hy - Ey*Hx)^2)
     return nothing
 end

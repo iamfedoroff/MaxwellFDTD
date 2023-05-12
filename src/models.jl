@@ -95,6 +95,7 @@ function solve!(
                 write_output!(out, model)
                 out.itout += 1
             end
+            update_output_variables(out, model)
             synchronize()
         end
 
@@ -102,6 +103,8 @@ function solve!(
             reset_timer!()
         end
     end
+
+    write_output_values(out, model)
 
     print_timer()
 
