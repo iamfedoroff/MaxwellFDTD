@@ -37,10 +37,6 @@ abstract type Model end
 #         update_E!(model)
 #         synchronize()
 #     end
-#     @timeit "update S" begin
-#         update_S!(model)
-#         synchronize()
-#     end
 
 #     @timeit "add_source" begin
 #         add_source!(field, source, t[it])  # additive source
@@ -66,7 +62,6 @@ function step!(model, it)
     update_D!(model)
     update_P!(model)
     update_E!(model)
-    update_S!(model)
 
     # update_E_explicit!(model)
 
@@ -122,12 +117,11 @@ struct Model1D{F, S, T, R, A, AP}
     Nt :: Int
     dt :: T
     t :: R
-    # Update coefficients for H and E fields:
+    # Update coefficients for H, E and D fields:
     Mh :: A
     Me :: A
-    # Variables for conductivity calculation:
-    Ms :: A
-    Sx :: A
+    Md1 :: A
+    Md2 :: A
     # Variables for ADE dispersion calculation:
     Aq :: AP
     Bq :: AP
@@ -168,14 +162,13 @@ function Model(
     eps = [geometry(z[iz]) ? eps : 1 for iz=1:Nz]
     mu = [geometry(z[iz]) ? mu : 1 for iz=1:Nz]
     sigma = [geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
+    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
-    # Update coefficients for H and E fields:
+    # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps + sigma*dt)
-
-    # Variables for conductivity calculation:
-    Ms = @. sigma * dt
-    Sx = zeros(Nz)
+    Me = @. 1 / (EPS0*eps)
+    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = @. dt / (1 + sigma*dt/2)
 
     # Variables for ADE dispersion calculation:
     (; chi) = material
@@ -194,7 +187,7 @@ function Model(
     psiExz, psiHyz = zeros(Nz), zeros(Nz)
 
     return Model1D(
-        field, source, Nt, dt, t, Mh, Me, Ms, Sx,
+        field, source, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Kz, Az, Bz, psiExz, psiHyz,
     )
 end
@@ -225,9 +218,9 @@ end
 
 
 function update_D!(model::Model1D)
-    (; field, dt, Kz, psiHyz) = model
+    (; field, Md1, Md2, Kz, psiHyz) = model
     (; Dx, dHyz) = field
-    @. Dx = Dx + dt * ((0 - dHyz/Kz) + (0 - psiHyz))
+    @. Dx = Md1 * Dx + Md2 * ((0 - dHyz/Kz) + (0 - psiHyz))
     return nothing
 end
 
@@ -248,7 +241,7 @@ end
 
 
 function update_E!(model::Model1D)
-    (; field, Me, Sx, Px) = model
+    (; field, Me, Px) = model
     (; Ex, Dx) = field
     Nq, Nz = size(Px)
     for iz=1:Nz
@@ -256,7 +249,7 @@ function update_E!(model::Model1D)
         for iq=1:Nq
             sumPx += Px[iq,iz]
         end
-        Ex[iz] = Me[iz] * (Dx[iz] - Sx[iz] - sumPx)
+        Ex[iz] = Me[iz] * (Dx[iz] - sumPx)
     end
     return nothing
 end
@@ -266,14 +259,6 @@ function update_E_explicit!(model::Model1D)
     (; field, dt, Me, Kz, psiHyz) = model
     (; Ex, dHyz) = field
     @. Ex = Ex + dt * Me * ((0 - dHyz/Kz) + (0 - psiHyz))
-    return nothing
-end
-
-
-function update_S!(model::Model1D)
-    (; field, Ms, Sx) = model
-    (; Ex) = field
-    @. Sx = Sx + Ms * Ex
     return nothing
 end
 
@@ -288,13 +273,11 @@ struct Model2D{F, S, T, R, A, AP, V}
     Nt :: Int
     dt :: T
     t :: R
-    # Update coefficients for H and E fields:
+    # Update coefficients for H, E and D fields:
     Mh :: A
     Me :: A
-    # Variables for conductivity calculation:
-    Ms :: A
-    Sx :: A
-    Sz :: A
+    Md1 :: A
+    Md2 :: A
     # Variables for ADE dispersion calculation:
     Aq :: AP
     Bq :: AP
@@ -343,15 +326,13 @@ function Model(
     eps = [geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
     mu = [geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
     sigma = [geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
+    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
-    # Update coefficients for H and E fields:
+    # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps + sigma*dt)
-
-    # Variables for conductivity calculation:
-    Ms = @. sigma * dt
-    Sx = zeros(Nx,Nz)
-    Sz = zeros(Nx,Nz)
+    Me = @. 1 / (EPS0*eps)
+    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = @. dt / (1 + sigma*dt/2)
 
     # Variables for ADE dispersion calculation:
     (; chi) = material
@@ -372,7 +353,7 @@ function Model(
     psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
 
     return Model2D(
-        field, source, Nt, dt, t, Mh, Me, Ms, Sx, Sz,
+        field, source, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
         Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx, psiHyx, psiHyz,
     )
@@ -407,10 +388,10 @@ end
 
 
 function update_D!(model::Model2D)
-    (; field, dt, Kx, Kz, psiHyx, psiHyz) = model
+    (; field, Md1, Md2, Kx, Kz, psiHyx, psiHyz) = model
     (; Dx, Dz, dHyx, dHyz) = field
-    @. Dx = Dx + dt * ((0 - dHyz) + (0 - psiHyz))
-    @. Dz = Dz + dt * ((dHyx - 0) + (psiHyx - 0))
+    @. Dx = Md1 * Dx + Md2 * ((0 - dHyz) + (0 - psiHyz))
+    @. Dz = Md1 * Dz + Md2 * ((dHyx - 0) + (psiHyx - 0))
     return nothing
 end
 
@@ -473,7 +454,7 @@ end
 
 
 function update_E!(model::Model2D)
-    (; field, Me, Sx, Sz, Px, Pz) = model
+    (; field, Me, Px, Pz) = model
     (; Ex, Ez, Dx, Dz) = field
     Nq, Nx, Nz = size(Px)
     for iz=1:Nz, ix=1:Nx
@@ -483,8 +464,8 @@ function update_E!(model::Model2D)
             sumPx += Px[iq,ix,iz]
             sumPz += Pz[iq,ix,iz]
         end
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
+        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - sumPx)
+        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
     end
     return nothing
 end
@@ -495,17 +476,17 @@ function update_E!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,
     # @krun Nx*Nz update_E_kernel!(model)
 
     # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Me, Sx, Sz, Px, Pz) = model
-    @krun Nx*Nz update_E_kernel!(field, Me, Sx, Sz, Px, Pz)
+    (; field, Me, Px, Pz) = model
+    @krun Nx*Nz update_E_kernel!(field, Me, Px, Pz)
 
     return nothing
 end
 # function update_E_kernel!(model::Model2D)
-function update_E_kernel!(field::Field2D, Me, Sx, Sz, Px, Pz)
+function update_E_kernel!(field::Field2D, Me, Px, Pz)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    # (; field, Me, Sx, Sz, Px, Pz) = model
+    # (; field, Me, Px, Pz) = model
     (; Ex, Ez, Dx, Dz) = field
 
     Nq = size(Px, 1)
@@ -519,8 +500,8 @@ function update_E_kernel!(field::Field2D, Me, Sx, Sz, Px, Pz)
             sumPx += Px[iq,ix,iz]
             sumPz += Pz[iq,ix,iz]
         end
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - Sx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - Sz[ix,iz] - sumPz)
+        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - sumPx)
+        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
     end
     return nothing
 end
@@ -535,15 +516,6 @@ function update_E_explicit!(model::Model2D)
 end
 
 
-function update_S!(model::Model2D)
-    (; field, Ms, Sx, Sz) = model
-    (; Ex, Ez) = field
-    @. Sx = Sx + Ms * Ex
-    @. Sz = Sz + Ms * Ez
-    return nothing
-end
-
-
 # ******************************************************************************
 # 3D
 # ******************************************************************************
@@ -554,14 +526,11 @@ struct Model3D{F, S, T, R, A, AP, V}
     Nt :: Int
     dt :: T
     t :: R
-    # Update coefficients for H and E fields:
+    # Update coefficients for H, E and D fields:
     Mh :: A
     Me :: A
-    # Variables for conductivity calculation:
-    Ms :: A
-    Sx :: A
-    Sy :: A
-    Sz :: A
+    Md1 :: A
+    Md2 :: A
     # Variables for ADE dispersion calculation:
     Aq :: AP
     Bq :: AP
@@ -624,16 +593,13 @@ function Model(
     eps = [geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     mu = [geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     sigma = [geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
-    # Update coefficients for H and E fields:
+    # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps + sigma*dt)
-
-    # Variables for conductivity calculation:
-    Ms = @. sigma * dt
-    Sx = zeros(Nx,Ny,Nz)
-    Sy = zeros(Nx,Ny,Nz)
-    Sz = zeros(Nx,Ny,Nz)
+    Me = @. 1 / (EPS0*eps)
+    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = @. dt / (1 + sigma*dt/2)
 
     # Variables for ADE dispersion calculation:
     (; chi) = material
@@ -657,7 +623,7 @@ function Model(
     psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
 
     return Model3D(
-        field, source, Nt, dt, t, Mh, Me, Ms, Sx, Sy, Sz,
+        field, source, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
         Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
         psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
@@ -709,12 +675,12 @@ end
 
 
 function update_D!(model::Model3D)
-    (; field, dt, Kx, Ky, Kz) = model
+    (; field, Md1, Md2, Kx, Ky, Kz) = model
     (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
     (; Dx, Dy, Dz, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
-    @. Dx = Dx + dt * ((dHzy - dHyz) + (psiHzy - psiHyz))
-    @. Dy = Dy + dt * ((dHxz - dHzx) + (psiHxz - psiHzx))
-    @. Dz = Dz + dt * ((dHyx - dHxy) + (psiHyx - psiHxy))
+    @. Dx = Md1 * Dx + Md2 * ((dHzy - dHyz) + (psiHzy - psiHyz))
+    @. Dy = Md1 * Dy + Md2 * ((dHxz - dHzx) + (psiHxz - psiHzx))
+    @. Dz = Md1 * Dz + Md2 * ((dHyx - dHxy) + (psiHyx - psiHxy))
     return nothing
 end
 
@@ -791,7 +757,7 @@ end
 
 
 function update_E!(model::Model3D)
-    (; field, Me, Sx, Sy, Sz, Px, Py, Pz) = model
+    (; field, Me, Px, Py, Pz) = model
     (; Ex, Ey, Ez, Dx, Dy, Dz) = field
     Nq, Nx, Ny, Nz = size(Px)
     for iz=1:Nz, iy=1:Ny, ix=1:Nx
@@ -803,9 +769,9 @@ function update_E!(model::Model3D)
             sumPy += Py[iq,ix,iy,iz]
             sumPz += Pz[iq,ix,iy,iz]
         end
-        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - Sx[ix,iy,iz] - sumPx)
-        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - Sy[ix,iy,iz] - sumPy)
-        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - Sz[ix,iy,iz] - sumPz)
+        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
+        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
+        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
     end
     return nothing
 end
@@ -816,13 +782,13 @@ function update_E!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,
     # @krun Nx*Ny*Nz update_E_kernel!(model)
 
     # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Me, Sx, Sy, Sz, Px, Py, Pz) = model
-    @krun Nx*Ny*Nz update_E_kernel!(field, Me, Sx, Sy, Sz, Px, Py, Pz)
+    (; field, Me, Px, Py, Pz) = model
+    @krun Nx*Ny*Nz update_E_kernel!(field, Me, Px, Py, Pz)
 
     return nothing
 end
 # function update_E_kernel!(model::Model3D)
-function update_E_kernel!(field::Field3D, Me, Sx, Sy, Sz, Px, Py, Pz)
+function update_E_kernel!(field::Field3D, Me, Px, Py, Pz)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
@@ -841,9 +807,9 @@ function update_E_kernel!(field::Field3D, Me, Sx, Sy, Sz, Px, Py, Pz)
             sumPy += Py[iq,ix,iy,iz]
             sumPz += Pz[iq,ix,iy,iz]
         end
-        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - Sx[ix,iy,iz] - sumPx)
-        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - Sy[ix,iy,iz] - sumPy)
-        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - Sz[ix,iy,iz] - sumPz)
+        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
+        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
+        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
     end
     return nothing
 end
@@ -856,16 +822,6 @@ function update_E_explicit!(model::Model3D)
     @. Ex = Ex + dt * Me * ((dHzy - dHyz) + (psiHzy - psiHyz))
     @. Ey = Ey + dt * Me * ((dHxz - dHzx) + (psiHxz - psiHzx))
     @. Ez = Ez + dt * Me * ((dHyx - dHxy) + (psiHyx - psiHxy))
-    return nothing
-end
-
-
-function update_S!(model::Model3D)
-    (; field, Ms, Sx, Sy, Sz) = model
-    (; Ex, Ey, Ez) = field
-    @. Sx = Sx + Ms * Ex
-    @. Sy = Sy + Ms * Ey
-    @. Sz = Sz + Ms * Ez
     return nothing
 end
 
