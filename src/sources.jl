@@ -1,26 +1,58 @@
-struct Source{C, S, A, F, P, T}
+abstract type Source end
+
+
+struct SoftSource{C, S, A, F, P} <: Source
     isrc :: C
     component :: S
     Amp :: A
     Phi :: A
     waveform :: F
     p :: P
-    type :: T
 end
 
-@adapt_structure Source
+@adapt_structure SoftSource
 
 
-function add_source!(field, source, t)
-    (; isrc, component, Amp, Phi, waveform, p, type) = source
-    F = getfield(field, component)
-    if type == :soft
-        @views @. F[isrc] = F[isrc] + Amp * waveform(t - Phi, (p,))
-    elseif type == :hard
-        @views @. F[isrc] = Amp * waveform(t - Phi, (p,))
+struct HardSource{C, S, A, F, P} <: Source
+    isrc :: C
+    component :: S
+    Amp :: A
+    Phi :: A
+    waveform :: F
+    p :: P
+end
+
+@adapt_structure HardSource
+
+
+# Converts the type of the 'component' field from 'Symbol' to 'Int'
+function isbitify(source::Source, field)
+    (; isrc, component, Amp, Phi, waveform, p) = source
+    if typeof(component) == Symbol
+        icomp = findfirst(isequal(component), fieldnames(typeof(field)))
     else
-        error("Wrong source type.")
+        icomp = component
     end
+    if typeof(source) <: SoftSource
+        return SoftSource(isrc, icomp, Amp, Phi, waveform, p)
+    elseif typeof(source) <: HardSource
+        return HardSource(isrc, icomp, Amp, Phi, waveform, p)
+    end
+end
+
+
+function add_source!(field, source::SoftSource, t)
+    (; isrc, component, Amp, Phi, waveform, p) = source
+    F = getfield(field, component)
+    @views @. F[isrc] = F[isrc] + Amp * waveform(t - Phi, (p,))
+    return nothing
+end
+
+
+function add_source!(field, source::HardSource, t)
+    (; isrc, component, Amp, Phi, waveform, p) = source
+    F = getfield(field, component)
+    @views @. F[isrc] = Amp * waveform(t - Phi, (p,))
     return nothing
 end
 
@@ -41,7 +73,13 @@ function PointSource(
     Phi = phase / frequency
     Amp, Phi = promote(Amp, Phi)
 
-    return Source(isrc, component, Amp, Phi, waveform, p, type)
+    if type == :soft
+        return SoftSource(isrc, component, Amp, Phi, waveform, p)
+    elseif type == :hard
+        return HardSource(isrc, component, Amp, Phi, waveform, p)
+    else
+        error("Wrong source type.")
+    end
 end
 
 
@@ -61,7 +99,13 @@ function PointSource(
     Phi = phase / frequency
     Amp, Phi = promote(Amp, Phi)
 
-    return Source(isrc, component, Amp, Phi, waveform, p, type)
+    if type == :soft
+        return SoftSource(isrc, component, Amp, Phi, waveform, p)
+    elseif type == :hard
+        return HardSource(isrc, component, Amp, Phi, waveform, p)
+    else
+        error("Wrong source type.")
+    end
 end
 
 
@@ -82,7 +126,13 @@ function PointSource(
     Phi = phase / frequency
     Amp, Phi = promote(Amp, Phi)
 
-    return Source(isrc, component, Amp, Phi, waveform, p, type)
+    if type == :soft
+        return SoftSource(isrc, component, Amp, Phi, waveform, p)
+    elseif type == :hard
+        return HardSource(isrc, component, Amp, Phi, waveform, p)
+    else
+        error("Wrong source type.")
+    end
 end
 
 
@@ -104,7 +154,13 @@ function LineSource(
         Phi[ix] = phase(x[ix]) / frequency
     end
 
-    return Source(isrc, component, Amp, Phi, waveform, p, type)
+    if type == :soft
+        return SoftSource(isrc, component, Amp, Phi, waveform, p)
+    elseif type == :hard
+        return HardSource(isrc, component, Amp, Phi, waveform, p)
+    else
+        error("Wrong source type.")
+    end
 end
 
 
@@ -126,5 +182,11 @@ function PlaneSource(
         Phi[ix,iy] = phase(x[ix], y[iy]) / frequency
     end
 
-    return Source(isrc, component, Amp, Phi, waveform, p, type)
+    if type == :soft
+        return SoftSource(isrc, component, Amp, Phi, waveform, p)
+    elseif type == :hard
+        return HardSource(isrc, component, Amp, Phi, waveform, p)
+    else
+        error("Wrong source type.")
+    end
 end

@@ -151,6 +151,7 @@ function Model(
     (; Nz, dz, z) = grid
 
     field = Field(grid)
+    source = isbitify(source, field)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dz^2)
@@ -315,6 +316,7 @@ function Model(
     (; Nx, Nz, dx, dz, x, z) = grid
 
     field = Field(grid)
+    source = isbitify(source, field)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
@@ -417,22 +419,15 @@ end
 function update_P!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
     N = length(Px)
-
-    # @krun N update_P_kernel!(model)
-
-    # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
+    @krun N update_P_kernel!(model)
     return nothing
 end
-# function update_P_kernel!(model::Model2D)
-function update_P_kernel!(field::Field2D, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2)
+function update_P_kernel!(model::Model2D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    # (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
     (; Ex, Ez) = field
-
     ci = CartesianIndices(Px)
     for ici=id:stride:length(ci)
         iq = ci[ici][1]
@@ -472,23 +467,15 @@ end
 function update_E!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
     Nq, Nx, Nz = size(Px)
-
-    # @krun Nx*Nz update_E_kernel!(model)
-
-    # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Me, Px, Pz) = model
-    @krun Nx*Nz update_E_kernel!(field, Me, Px, Pz)
-
+    @krun Nx*Nz update_E_kernel!(model)
     return nothing
 end
-# function update_E_kernel!(model::Model2D)
-function update_E_kernel!(field::Field2D, Me, Px, Pz)
+function update_E_kernel!(model::Model2D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
-    # (; field, Me, Px, Pz) = model
+    (; field, Me, Px, Pz) = model
     (; Ex, Ez, Dx, Dz) = field
-
     Nq = size(Px, 1)
     ci = CartesianIndices(Ex)
     for ici=id:stride:length(ci)
@@ -582,6 +569,7 @@ function Model(
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
     field = Field(grid)
+    source = isbitify(source, field)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
@@ -712,23 +700,15 @@ end
 function update_P!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
     N = length(Px)
-
-    # @krun N update_P_kernel!(model)
-
-    # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Aq, Bq, Cq) = model
-    (; Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
-    @krun N update_P_kernel!(field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2)
+    @krun N update_P_kernel!(model)
     return nothing
 end
-# function update_P_kernel!(model::Model3D)
-function update_P_kernel!(
-    field::Field3D, Aq, Bq, Cq,
-    Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-)
+function update_P_kernel!(model::Model3D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
+    (; field, Aq, Bq, Cq) = model
+    (; Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
     (; Ex, Ey, Ez) = field
     ci = CartesianIndices(Px)
     for ici=id:stride:length(ci)
@@ -778,20 +758,14 @@ end
 function update_E!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
     Nq, Nx, Ny, Nz = size(Px)
-
-    # @krun Nx*Ny*Nz update_E_kernel!(model)
-
-    # Have to pass specific field since Fcomp in source is Symbol and not isbits
-    (; field, Me, Px, Py, Pz) = model
-    @krun Nx*Ny*Nz update_E_kernel!(field, Me, Px, Py, Pz)
-
+    @krun Nx*Ny*Nz update_E_kernel!(model)
     return nothing
 end
-# function update_E_kernel!(model::Model3D)
-function update_E_kernel!(field::Field3D, Me, Px, Py, Pz)
+function update_E_kernel!(model::Model3D)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
 
+    (; field, Me, Px, Py, Pz) = model
     (; Ex, Ey, Ez, Dx, Dy, Dz) = field
     Nq = size(Px, 1)
     ci = CartesianIndices(Ex)
