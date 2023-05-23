@@ -362,143 +362,146 @@ function Model(
 end
 
 
-function update_CPML_E!(model::Model2D)
+@kernel function update_CPML_E_kernel!(model::Model2D)
     (; field, Ax, Bx, Az, Bz, psiExz, psiEzx) = model
     (; dExz, dEzx) = field
-    update_psi!(psiExz, Az, Bz, dExz; dim=2)
-    update_psi!(psiEzx, Ax, Bx, dEzx; dim=1)
+
+    ix, iz = @index(Global, NTuple)
+
+    psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz[ix,iz]
+    psiEzx[ix,iz] = Bx[ix] * psiEzx[ix,iz] + Ax[ix] * dEzx[ix,iz]
+end
+function update_CPML_E!(model::Model2D)
+    (; psiExz) = model
+    backend = get_backend(psiExz)
+    ndrange = size(psiExz)
+    update_CPML_E_kernel!(backend)(model; ndrange)
     return nothing
 end
 
 
-function update_CPML_H!(model::Model2D)
+@kernel function update_CPML_H_kernel!(model::Model2D)
     (; field, Ax, Bx, Az, Bz, psiHyx, psiHyz) = model
     (; dHyx, dHyz) = field
-    update_psi!(psiHyx, Ax, Bx, dHyx; dim=1)
-    update_psi!(psiHyz, Az, Bz, dHyz; dim=2)
+
+    ix, iz = @index(Global, NTuple)
+
+    psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx[ix,iz]
+    psiHyz[ix,iz] = Bz[iz] * psiHyz[ix,iz] + Az[iz] * dHyz[ix,iz]
+end
+function update_CPML_H!(model::Model2D)
+    (; psiHyx) = model
+    backend = get_backend(psiHyx)
+    ndrange = size(psiHyx)
+    update_CPML_H_kernel!(backend)(model; ndrange)
     return nothing
 end
 
 
-function update_H!(model::Model2D)
+@kernel function update_H_kernel!(model::Model2D)
     (; field, Mh, Kx, Kz, psiExz, psiEzx) = model
     (; Hy, dExz, dEzx) = field
-    @. Hy = Hy - Mh * (dExz - dEzx) - Mh * (psiExz - psiEzx)
-    # @. Hy = Hy - Mh * (dExz / Kz - dEzx / Kx) - Mh * (psiExz - psiEzx)
+
+    ix, iz = @index(Global, NTuple)
+
+    Hy[ix,iz] = Hy[ix,iz] - Mh[ix,iz] * (
+        (dExz[ix,iz] / Kz[iz] - dEzx[ix,iz] / Kx[ix]) +(psiExz[ix,iz] - psiEzx[ix,iz])
+    )
+end
+function update_H!(model::Model2D)
+    (; Hy) = model.field
+    backend = get_backend(Hy)
+    ndrange = size(Hy)
+    update_H_kernel!(backend)(model; ndrange)
     return nothing
 end
 
 
-function update_D!(model::Model2D)
+@kernel function update_D_kernel!(model::Model2D)
     (; field, Md1, Md2, Kx, Kz, psiHyx, psiHyz) = model
     (; Dx, Dz, dHyx, dHyz) = field
-    @. Dx = Md1 * Dx + Md2 * ((0 - dHyz) + (0 - psiHyz))
-    @. Dz = Md1 * Dz + Md2 * ((dHyx - 0) + (psiHyx - 0))
+
+    ix, iz = @index(Global, NTuple)
+
+    Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] +
+                Md2[ix,iz] * ((0 - dHyz[ix,iz]/Kz[iz]) + (0 - psiHyz[ix,iz])/Kz[iz])
+    Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] +
+                Md2[ix,iz] * ((dHyx[ix,iz]/Kx[ix] - 0) + (psiHyx[ix,iz]/Kx[ix] - 0))
+end
+function update_D!(model::Model2D)
+    (; Dx) = model.field
+    backend = get_backend(Dx)
+    ndrange = size(Dx)
+    update_D_kernel!(backend)(model; ndrange)
     return nothing
 end
 
 
+@kernel function update_P_kernel!(model::Model2D)
+    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; Ex, Ez) = field
+
+    iq, ix, iz = @index(Global, NTuple)
+
+    oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
+    oldPx1[iq,ix,iz] = Px[iq,ix,iz]
+    Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
+                   Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
+                   Cq[iq,ix,iz] * Ex[ix,iz]
+    oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
+    oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
+    Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
+                   Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
+                   Cq[iq,ix,iz] * Ez[ix,iz]
+end
 function update_P!(model::Model2D)
-    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; Ex, Ez) = field
-    Nq, Nx, Nz = size(Px)
-    for iz=1:Nz, ix=1:Nx, iq=1:Nq
-        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
-        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
-        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ex[ix,iz]
-        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
-        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
-        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ez[ix,iz]
-    end
-    return nothing
-end
-function update_P!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
     (; Px) = model
-    N = length(Px)
-    @krun N update_P_kernel!(model)
-    return nothing
-end
-function update_P_kernel!(model::Model2D)
-    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    stride = blockDim().x * gridDim().x
-
-    (; field, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; Ex, Ez) = field
-    ci = CartesianIndices(Px)
-    for ici=id:stride:length(ci)
-        iq = ci[ici][1]
-        ix = ci[ici][2]
-        iz = ci[ici][3]
-        oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
-        oldPx1[iq,ix,iz] = Px[iq,ix,iz]
-        Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ex[ix,iz]
-        oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
-        oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
-        Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
-                       Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
-                       Cq[iq,ix,iz] * Ez[ix,iz]
-    end
+    backend = get_backend(Px)
+    ndrange = size(Px)
+    update_P_kernel!(backend)(model; ndrange)
     return nothing
 end
 
 
-function update_E!(model::Model2D)
+@kernel function update_E_kernel!(model::Model2D)
     (; field, Me, Px, Pz) = model
     (; Ex, Ez, Dx, Dz) = field
-    Nq, Nx, Nz = size(Px)
-    for iz=1:Nz, ix=1:Nx
-        sumPx = zero(eltype(Px))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            sumPx += Px[iq,ix,iz]
-            sumPz += Pz[iq,ix,iz]
-        end
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
-    end
-    return nothing
-end
-function update_E!(model::Model2D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
-    (; Px) = model
-    Nq, Nx, Nz = size(Px)
-    @krun Nx*Nz update_E_kernel!(model)
-    return nothing
-end
-function update_E_kernel!(model::Model2D)
-    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    stride = blockDim().x * gridDim().x
 
-    (; field, Me, Px, Pz) = model
-    (; Ex, Ez, Dx, Dz) = field
+    ix, iz = @index(Global, NTuple)
+
     Nq = size(Px, 1)
-    ci = CartesianIndices(Ex)
-    for ici=id:stride:length(ci)
-        ix = ci[ici][1]
-        iz = ci[ici][2]
-        sumPx = zero(eltype(Px))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            sumPx += Px[iq,ix,iz]
-            sumPz += Pz[iq,ix,iz]
-        end
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
+    sumPx = zero(eltype(Px))
+    sumPz = zero(eltype(Pz))
+    for iq=1:Nq
+        sumPx += Px[iq,ix,iz]
+        sumPz += Pz[iq,ix,iz]
     end
+    Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - sumPx)
+    Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
+end
+function update_E!(model::Model2D)
+    (; Ex) = model.field
+    backend = get_backend(Ex)
+    ndrange = size(Ex)
+    update_E_kernel!(backend)(model; ndrange)
     return nothing
 end
 
 
-function update_E_explicit!(model::Model2D)
+@kernel function update_E_explicit_kernel!(model::Model2D)
     (; field, dt, Me, Kx, Kz, psiHyx, psiHyz) = model
     (; Ex, Ez, dHyx, dHyz) = field
-    @. Ex = Ex + dt * Me * ((0 - dHyz) + (0 - psiHyz))
-    @. Ez = Ez + dt * Me * ((dHyx - 0) + (psiHyx - 0))
+
+    ix, iz = @index(Global, NTuple)
+
+    Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz[ix,iz]/Kz[iz]) + (0 - psiHyz[ix,iz]))
+    Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx[ix,iz]/Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
+end
+function update_E_explicit!(model::Model2D)
+    (; Ex) = model.field
+    backend = get_backend(Ex)
+    ndrange = size(Ex)
+    update_E_explicit_kernel!(backend)(model; ndrange)
     return nothing
 end
 
@@ -736,57 +739,87 @@ function update_P_kernel!(model::Model3D)
 end
 
 
-function update_E!(model::Model3D)
-    (; field, Me, Px, Py, Pz) = model
-    (; Ex, Ey, Ez, Dx, Dy, Dz) = field
-    Nq, Nx, Ny, Nz = size(Px)
-    for iz=1:Nz, iy=1:Ny, ix=1:Nx
-        sumPx = zero(eltype(Px))
-        sumPy = zero(eltype(Py))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            sumPx += Px[iq,ix,iy,iz]
-            sumPy += Py[iq,ix,iy,iz]
-            sumPz += Pz[iq,ix,iy,iz]
-        end
-        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
-        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
-        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
-    end
-    return nothing
-end
-function update_E!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
-    (; Px) = model
-    Nq, Nx, Ny, Nz = size(Px)
-    @krun Nx*Ny*Nz update_E_kernel!(model)
-    return nothing
-end
-function update_E_kernel!(model::Model3D)
-    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    stride = blockDim().x * gridDim().x
+# function update_E!(model::Model3D)
+#     (; field, Me, Px, Py, Pz) = model
+#     (; Ex, Ey, Ez, Dx, Dy, Dz) = field
+#     Nq, Nx, Ny, Nz = size(Px)
+#     for iz=1:Nz, iy=1:Ny, ix=1:Nx
+#         sumPx = zero(eltype(Px))
+#         sumPy = zero(eltype(Py))
+#         sumPz = zero(eltype(Pz))
+#         for iq=1:Nq
+#             sumPx += Px[iq,ix,iy,iz]
+#             sumPy += Py[iq,ix,iy,iz]
+#             sumPz += Pz[iq,ix,iy,iz]
+#         end
+#         Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
+#         Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
+#         Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
+#     end
+#     return nothing
+# end
+# function update_E!(model::Model3D{F,S,T,R,A,AP,V}) where {F,S,T,R,A<:CuArray,AP,V}
+#     (; Px) = model
+#     Nq, Nx, Ny, Nz = size(Px)
+#     @krun Nx*Ny*Nz update_E_kernel!(model)
+#     return nothing
+# end
+# function update_E_kernel!(model::Model3D)
+#     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+#     stride = blockDim().x * gridDim().x
 
+#     (; field, Me, Px, Py, Pz) = model
+#     (; Ex, Ey, Ez, Dx, Dy, Dz) = field
+#     Nq = size(Px, 1)
+#     ci = CartesianIndices(Ex)
+#     for ici=id:stride:length(ci)
+#         ix = ci[ici][1]
+#         iy = ci[ici][2]
+#         iz = ci[ici][3]
+#         sumPx = zero(eltype(Px))
+#         sumPy = zero(eltype(Py))
+#         sumPz = zero(eltype(Pz))
+#         for iq=1:Nq
+#             sumPx += Px[iq,ix,iy,iz]
+#             sumPy += Py[iq,ix,iy,iz]
+#             sumPz += Pz[iq,ix,iy,iz]
+#         end
+#         Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
+#         Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
+#         Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
+#     end
+#     return nothing
+# end
+
+
+@kernel function update_E_kernel!(model::Model3D)
     (; field, Me, Px, Py, Pz) = model
     (; Ex, Ey, Ez, Dx, Dy, Dz) = field
+
+    ix, iy, iz = @index(Global, NTuple)
+
     Nq = size(Px, 1)
-    ci = CartesianIndices(Ex)
-    for ici=id:stride:length(ci)
-        ix = ci[ici][1]
-        iy = ci[ici][2]
-        iz = ci[ici][3]
-        sumPx = zero(eltype(Px))
-        sumPy = zero(eltype(Py))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            sumPx += Px[iq,ix,iy,iz]
-            sumPy += Py[iq,ix,iy,iz]
-            sumPz += Pz[iq,ix,iy,iz]
-        end
-        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
-        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
-        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
+    sumPx = zero(eltype(Px))
+    sumPy = zero(eltype(Py))
+    sumPz = zero(eltype(Pz))
+    for iq=1:Nq
+        sumPx += Px[iq,ix,iy,iz]
+        sumPy += Py[iq,ix,iy,iz]
+        sumPz += Pz[iq,ix,iy,iz]
     end
+    Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
+    Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
+    Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
+end
+function update_E!(model::Model3D)
+    (; Ex) = model.field
+    backend = get_backend(Ex)
+    ndrange = size(Ex)
+    update_E_kernel!(backend)(model; ndrange)
     return nothing
 end
+
+
 
 
 function update_E_explicit!(model::Model3D)
