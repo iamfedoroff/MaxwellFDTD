@@ -142,11 +142,8 @@ end
 
     @inbounds begin
         # derivatives E:
-        if iz == Nz
-            dExz[Nz] = (Ex[1] - Ex[Nz]) / dz
-        else
-            dExz[iz] = (Ex[iz+1] - Ex[iz]) / dz
-        end
+        iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        dExz[iz] = (Ex[izp1] - Ex[iz]) / dz
 
         # update CPML E:
         psiExz[iz] = Bz[iz] * psiExz[iz] + Az[iz] * dExz[iz]
@@ -174,11 +171,8 @@ end
 
     @inbounds begin
         # derivatives H:
-        if iz == 1
-            dHyz[1] = (Hy[1] - Hy[Nz]) / dz
-        else
-            dHyz[iz] = (Hy[iz] - Hy[iz-1]) / dz
-        end
+        iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        dHyz[iz] = (Hy[iz] - Hy[izm1]) / dz
 
         # update CPML H:
         psiHyz[iz] = Bz[iz] * psiHyz[iz] + Az[iz] * dHyz[iz]
@@ -327,14 +321,10 @@ end
 
     @inbounds begin
         # derivatives E:
-        if ix == Nx
-            dEzx[Nx,iz] = (Ez[1,iz] - Ez[Nx,iz]) / dx
-        elseif iz == Nz
-            dExz[ix,Nz] = (Ex[ix,1] - Ex[ix,Nz]) / dz
-        else
-            dExz[ix,iz] = (Ex[ix,iz+1] - Ex[ix,iz]) / dz
-            dEzx[ix,iz] = (Ez[ix+1,iz] - Ez[ix,iz]) / dx
-        end
+        ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
+        iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        dExz[ix,iz] = (Ex[ix,izp1] - Ex[ix,iz]) / dz
+        dEzx[ix,iz] = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
 
         # update CPML E:
         psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz[ix,iz]
@@ -366,14 +356,10 @@ end
 
     @inbounds begin
         # derivatives H:
-        if ix == 1
-            dHyx[1,iz] = (Hy[1,iz] - Hy[Nx,iz]) / dx
-        elseif iz == 1
-            dHyz[ix,1] = (Hy[ix,1] - Hy[ix,Nz]) / dz
-        else
-            dHyx[ix,iz] = (Hy[ix,iz] - Hy[ix-1,iz]) / dx
-            dHyz[ix,iz] = (Hy[ix,iz] - Hy[ix,iz-1]) / dz
-        end
+        ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
+        iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        dHyx[ix,iz] = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
+        dHyz[ix,iz] = (Hy[ix,iz] - Hy[ix,izm1]) / dz
 
         # update CPML H:
         psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx[ix,iz]
@@ -564,23 +550,15 @@ end
 
     @inbounds begin
         # derivatives E:
-        if ix == Nx
-            dEyx[Nx,iy,iz] = (Ey[1,iy,iz] - Ey[Nx,iy,iz]) / dx
-            dEzx[Nx,iy,iz] = (Ez[1,iy,iz] - Ez[Nx,iy,iz]) / dx
-        elseif iy == Ny
-            dExy[ix,Ny,iz] = (Ex[ix,1,iz] - Ex[ix,Ny,iz]) / dy
-            dEzy[ix,Ny,iz] = (Ez[ix,1,iz] - Ez[ix,Ny,iz]) / dy
-        elseif iz == Nz
-            dExz[ix,iy,Nz] = (Ex[ix,iy,1] - Ex[ix,iy,Nz]) / dz
-            dEyz[ix,iy,Nz] = (Ey[ix,iy,1] - Ey[ix,iy,Nz]) / dz
-        else
-            dExy[ix,iy,iz] = (Ex[ix,iy+1,iz] - Ex[ix,iy,iz]) / dy
-            dExz[ix,iy,iz] = (Ex[ix,iy,iz+1] - Ex[ix,iy,iz]) / dz
-            dEyx[ix,iy,iz] = (Ey[ix+1,iy,iz] - Ey[ix,iy,iz]) / dx
-            dEyz[ix,iy,iz] = (Ey[ix,iy,iz+1] - Ey[ix,iy,iz]) / dz
-            dEzx[ix,iy,iz] = (Ez[ix+1,iy,iz] - Ez[ix,iy,iz]) / dx
-            dEzy[ix,iy,iz] = (Ez[ix,iy+1,iz] - Ez[ix,iy,iz]) / dy
-        end
+        ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
+        iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
+        iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        dExy[ix,iy,iz] = (Ex[ix,iyp1,iz] - Ex[ix,iy,iz]) / dy
+        dExz[ix,iy,iz] = (Ex[ix,iy,izp1] - Ex[ix,iy,iz]) / dz
+        dEyx[ix,iy,iz] = (Ey[ixp1,iy,iz] - Ey[ix,iy,iz]) / dx
+        dEyz[ix,iy,iz] = (Ey[ix,iy,izp1] - Ey[ix,iy,iz]) / dz
+        dEzx[ix,iy,iz] = (Ez[ixp1,iy,iz] - Ez[ix,iy,iz]) / dx
+        dEzy[ix,iy,iz] = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
 
         # update CPML E:
         psiExy[ix,iy,iz] = By[iy] * psiExy[ix,iy,iz] + Ay[iy] * dExy[ix,iy,iz]
@@ -626,23 +604,15 @@ end
 
     @inbounds begin
         # derivatives H:
-        if ix == 1
-            dHyx[1,iy,iz] = (Hy[1,iy,iz] - Hy[Nx,iy,iz]) / dx
-            dHzx[1,iy,iz] = (Hz[1,iy,iz] - Hz[Nx,iy,iz]) / dx
-        elseif iy == 1
-            dHxy[ix,1,iz] = (Hx[ix,1,iz] - Hx[ix,Ny,iz]) / dy
-            dHzy[ix,1,iz] = (Hz[ix,1,iz] - Hz[ix,Ny,iz]) / dy
-        elseif iz == 1
-            dHxz[ix,iy,1] = (Hx[ix,iy,1] - Hx[ix,iy,Nz]) / dz
-            dHyz[ix,iy,1] = (Hy[ix,iy,1] - Hy[ix,iy,Nz]) / dz
-        else
-            dHxy[ix,iy,iz] = (Hx[ix,iy,iz] - Hx[ix,iy-1,iz]) / dy
-            dHxz[ix,iy,iz] = (Hx[ix,iy,iz] - Hx[ix,iy,iz-1]) / dz
-            dHyx[ix,iy,iz] = (Hy[ix,iy,iz] - Hy[ix-1,iy,iz]) / dx
-            dHyz[ix,iy,iz] = (Hy[ix,iy,iz] - Hy[ix,iy,iz-1]) / dz
-            dHzx[ix,iy,iz] = (Hz[ix,iy,iz] - Hz[ix-1,iy,iz]) / dx
-            dHzy[ix,iy,iz] = (Hz[ix,iy,iz] - Hz[ix,iy-1,iz]) / dy
-        end
+        ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
+        iy == 1 ? iym1 = Ny : iym1 = iy - 1
+        iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        dHxy[ix,iy,iz] = (Hx[ix,iy,iz] - Hx[ix,iym1,iz]) / dy
+        dHxz[ix,iy,iz] = (Hx[ix,iy,iz] - Hx[ix,iy,izm1]) / dz
+        dHyx[ix,iy,iz] = (Hy[ix,iy,iz] - Hy[ixm1,iy,iz]) / dx
+        dHyz[ix,iy,iz] = (Hy[ix,iy,iz] - Hy[ix,iy,izm1]) / dz
+        dHzx[ix,iy,iz] = (Hz[ix,iy,iz] - Hz[ixm1,iy,iz]) / dx
+        dHzy[ix,iy,iz] = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
 
         # update CPML H:
         psiHxy[ix,iy,iz] = By[iy] * psiHxy[ix,iy,iz] + Ay[iy] * dHxy[ix,iy,iz]
