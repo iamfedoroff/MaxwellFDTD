@@ -12,10 +12,6 @@ struct Field1D{G, A} <: Field
     Dx :: A
     # electric field comonents:
     Ex :: A
-    # electric field derivatives:
-    dExz :: A
-    # magnetic field derivatives:
-    dHyz :: A
 end
 
 @adapt_structure Field1D
@@ -23,8 +19,8 @@ end
 
 function Field(grid::Grid1D)
     (; Nz) = grid
-    Hy, Dx, Ex, dExz, dHyz = (zeros(Nz) for i=1:5)
-    return Field1D(grid, Hy, Dx, Ex, dExz, dHyz)
+    Hy, Dx, Ex = (zeros(Nz) for i=1:3)
+    return Field1D(grid, Hy, Dx, Ex)
 end
 
 
@@ -47,12 +43,6 @@ struct Field2D{G, A} <: Field
     # electric field comonents:
     Ex :: A
     Ez :: A
-    # electric field derivatives:
-    dExz :: A
-    dEzx :: A
-    # magnetic field derivatives:
-    dHyx :: A
-    dHyz :: A
 end
 
 @adapt_structure Field2D
@@ -60,8 +50,8 @@ end
 
 function Field(grid::Grid2D)
     (; Nx, Nz) = grid
-    Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz = (zeros(Nx,Nz) for i=1:9)
-    return Field2D(grid, Hy, Dx, Dz, Ex, Ez, dExz, dEzx, dHyx, dHyz)
+    Hy, Dx, Dz, Ex, Ez = (zeros(Nx,Nz) for i=1:5)
+    return Field2D(grid, Hy, Dx, Dz, Ex, Ez)
 end
 
 
@@ -88,20 +78,6 @@ struct Field3D{G, A} <: Field
     Ex :: A
     Ey :: A
     Ez :: A
-    # electric field derivatives:
-    dExy :: A
-    dExz :: A
-    dEyx :: A
-    dEyz :: A
-    dEzx :: A
-    dEzy :: A
-    # magnetic field derivatives:
-    dHxy :: A
-    dHxz :: A
-    dHyx :: A
-    dHyz :: A
-    dHzx :: A
-    dHzy :: A
 end
 
 @adapt_structure Field3D
@@ -110,13 +86,7 @@ end
 function Field(grid::Grid3D)
     (; Nx, Ny, Nz) = grid
     Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez = (zeros(Nx,Ny,Nz) for i=1:9)
-    dExy, dExz, dEyx, dEyz, dEzx, dEzy = (zeros(Nx,Ny,Nz) for i=1:6)
-    dHxy, dHxz, dHyx, dHyz, dHzx, dHzy = (zeros(Nx,Ny,Nz) for i=1:6)
-    return Field3D(
-        grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez,
-        dExy, dExz, dEyx, dEyz, dEzx, dEzy,
-        dHxy, dHxz, dHyx, dHyz, dHzx, dHzy,
-    )
+    return Field3D(grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez)
 end
 
 

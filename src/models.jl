@@ -135,7 +135,7 @@ end
 
 @kernel function update_H_kernel!(model::Model1D)
     (; field, Mh, Kz, Az, Bz, psiExz) = model
-    (; grid, Hy, Ex, dExz) = field
+    (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
 
     iz = @index(Global)
@@ -143,13 +143,13 @@ end
     @inbounds begin
         # derivatives E:
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
-        dExz[iz] = (Ex[izp1] - Ex[iz]) / dz
+        dExz = (Ex[izp1] - Ex[iz]) / dz
 
         # update CPML E:
-        psiExz[iz] = Bz[iz] * psiExz[iz] + Az[iz] * dExz[iz]
+        psiExz[iz] = Bz[iz] * psiExz[iz] + Az[iz] * dExz
 
         # update H:
-        Hy[iz] = Hy[iz] - Mh[iz] * ((0 + dExz[iz] / Kz[iz]) + (0 + psiExz[iz]))
+        Hy[iz] = Hy[iz] - Mh[iz] * ((0 + dExz / Kz[iz]) + (0 + psiExz[iz]))
     end
 end
 function update_H!(model::Model1D)
@@ -164,7 +164,7 @@ end
 @kernel function update_E_kernel!(model::Model1D)
     (; field, Me, Md1, Md2, Kz, Az, Bz, psiHyz) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
-    (; grid, Hy, Dx, Ex, dHyz) = field
+    (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
 
     iz = @index(Global)
@@ -172,13 +172,13 @@ end
     @inbounds begin
         # derivatives H:
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
-        dHyz[iz] = (Hy[iz] - Hy[izm1]) / dz
+        dHyz = (Hy[iz] - Hy[izm1]) / dz
 
         # update CPML H:
-        psiHyz[iz] = Bz[iz] * psiHyz[iz] + Az[iz] * dHyz[iz]
+        psiHyz[iz] = Bz[iz] * psiHyz[iz] + Az[iz] * dHyz
 
         # update D:
-        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * ((0 - dHyz[iz] / Kz[iz]) + (0 - psiHyz[iz]))
+        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
 
         # update P:
         Nq = size(Px, 1)
@@ -314,7 +314,7 @@ end
 @kernel function update_H_kernel!(model::Model2D)
     (; field, Mh) = model
     (; Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx) = model
-    (; grid, Hy, Ex, Ez,dExz, dEzx) = field
+    (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
     ix, iz = @index(Global, NTuple)
@@ -323,16 +323,16 @@ end
         # derivatives E:
         ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
-        dExz[ix,iz] = (Ex[ix,izp1] - Ex[ix,iz]) / dz
-        dEzx[ix,iz] = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
+        dExz = (Ex[ix,izp1] - Ex[ix,iz]) / dz
+        dEzx = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
 
         # update CPML E:
-        psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz[ix,iz]
-        psiEzx[ix,iz] = Bx[ix] * psiEzx[ix,iz] + Ax[ix] * dEzx[ix,iz]
+        psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz
+        psiEzx[ix,iz] = Bx[ix] * psiEzx[ix,iz] + Ax[ix] * dEzx
 
         # update H:
         Hy[ix,iz] = Hy[ix,iz] - Mh[ix,iz] * (
-            (dExz[ix,iz] / Kz[iz] - dEzx[ix,iz] / Kx[ix]) + (psiExz[ix,iz] - psiEzx[ix,iz])
+            (dExz / Kz[iz] - dEzx / Kx[ix]) + (psiExz[ix,iz] - psiEzx[ix,iz])
         )
     end
 end
@@ -349,7 +349,7 @@ end
     (; field, Me, Md1, Md2) = model
     (; Kx, Ax, Bx, Kz, Az, Bz, psiHyx, psiHyz) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; grid, Hy, Dx, Dz, Ex, Ez, dHyz, dHyx) = field
+    (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
     ix, iz = @index(Global, NTuple)
@@ -358,18 +358,18 @@ end
         # derivatives H:
         ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
-        dHyx[ix,iz] = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
-        dHyz[ix,iz] = (Hy[ix,iz] - Hy[ix,izm1]) / dz
+        dHyx = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
+        dHyz = (Hy[ix,iz] - Hy[ix,izm1]) / dz
 
         # update CPML H:
-        psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx[ix,iz]
-        psiHyz[ix,iz] = Bz[iz] * psiHyz[ix,iz] + Az[iz] * dHyz[ix,iz]
+        psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx
+        psiHyz[ix,iz] = Bz[iz] * psiHyz[ix,iz] + Az[iz] * dHyz
 
         # update D:
         Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] +
-                    Md2[ix,iz] * ((0 - dHyz[ix,iz] / Kz[iz]) + (0 - psiHyz[ix,iz]) / Kz[iz])
+                    Md2[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
         Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] +
-                    Md2[ix,iz] * ((dHyx[ix,iz] / Kx[ix] - 0) + (psiHyx[ix,iz] / Kx[ix] - 0))
+                    Md2[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
 
         # update P:
         Nq = size(Px, 1)
@@ -543,7 +543,7 @@ end
     (; field, Mh) = model
     (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = model
     (; psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy) = model
-    (; grid, Hx, Hy, Hz, Ex, Ey, Ez, dExy, dExz, dEyx, dEyz, dEzx, dEzy) = field
+    (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
     ix, iy, iz = @index(Global, NTuple)
@@ -553,33 +553,30 @@ end
         ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
         iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
-        dExy[ix,iy,iz] = (Ex[ix,iyp1,iz] - Ex[ix,iy,iz]) / dy
-        dExz[ix,iy,iz] = (Ex[ix,iy,izp1] - Ex[ix,iy,iz]) / dz
-        dEyx[ix,iy,iz] = (Ey[ixp1,iy,iz] - Ey[ix,iy,iz]) / dx
-        dEyz[ix,iy,iz] = (Ey[ix,iy,izp1] - Ey[ix,iy,iz]) / dz
-        dEzx[ix,iy,iz] = (Ez[ixp1,iy,iz] - Ez[ix,iy,iz]) / dx
-        dEzy[ix,iy,iz] = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
+        dExy = (Ex[ix,iyp1,iz] - Ex[ix,iy,iz]) / dy
+        dExz = (Ex[ix,iy,izp1] - Ex[ix,iy,iz]) / dz
+        dEyx = (Ey[ixp1,iy,iz] - Ey[ix,iy,iz]) / dx
+        dEyz = (Ey[ix,iy,izp1] - Ey[ix,iy,iz]) / dz
+        dEzx = (Ez[ixp1,iy,iz] - Ez[ix,iy,iz]) / dx
+        dEzy = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
 
         # update CPML E:
-        psiExy[ix,iy,iz] = By[iy] * psiExy[ix,iy,iz] + Ay[iy] * dExy[ix,iy,iz]
-        psiExz[ix,iy,iz] = Bz[iz] * psiExz[ix,iy,iz] + Az[iz] * dExz[ix,iy,iz]
-        psiEyx[ix,iy,iz] = Bx[ix] * psiEyx[ix,iy,iz] + Ax[ix] * dEyx[ix,iy,iz]
-        psiEyz[ix,iy,iz] = Bz[iz] * psiEyz[ix,iy,iz] + Az[iz] * dEyz[ix,iy,iz]
-        psiEzx[ix,iy,iz] = Bx[ix] * psiEzx[ix,iy,iz] + Ax[ix] * dEzx[ix,iy,iz]
-        psiEzy[ix,iy,iz] = By[iy] * psiEzy[ix,iy,iz] + Ay[iy] * dEzy[ix,iy,iz]
+        psiExy[ix,iy,iz] = By[iy] * psiExy[ix,iy,iz] + Ay[iy] * dExy
+        psiExz[ix,iy,iz] = Bz[iz] * psiExz[ix,iy,iz] + Az[iz] * dExz
+        psiEyx[ix,iy,iz] = Bx[ix] * psiEyx[ix,iy,iz] + Ax[ix] * dEyx
+        psiEyz[ix,iy,iz] = Bz[iz] * psiEyz[ix,iy,iz] + Az[iz] * dEyz
+        psiEzx[ix,iy,iz] = Bx[ix] * psiEzx[ix,iy,iz] + Ax[ix] * dEzx
+        psiEzy[ix,iy,iz] = By[iy] * psiEzy[ix,iy,iz] + Ay[iy] * dEzy
 
         # update H:
         Hx[ix,iy,iz] = Hx[ix,iy,iz] - Mh[ix,iy,iz] * (
-            (dEzy[ix,iy,iz] / Ky[iy] - dEyz[ix,iy,iz] / Kz[iz]) +
-            (psiEzy[ix,iy,iz] - psiEyz[ix,iy,iz])
+            (dEzy / Ky[iy] - dEyz / Kz[iz]) + (psiEzy[ix,iy,iz] - psiEyz[ix,iy,iz])
         )
         Hy[ix,iy,iz] = Hy[ix,iy,iz] - Mh[ix,iy,iz] * (
-            (dExz[ix,iy,iz] / Kz[iz] - dEzx[ix,iy,iz] / Kx[ix]) +
-            (psiExz[ix,iy,iz] - psiEzx[ix,iy,iz])
+            (dExz / Kz[iz] - dEzx / Kx[ix]) + (psiExz[ix,iy,iz] - psiEzx[ix,iy,iz])
         )
         Hz[ix,iy,iz] = Hz[ix,iy,iz] - Mh[ix,iy,iz] * (
-            (dEyx[ix,iy,iz] / Kx[ix] - dExy[ix,iy,iz] / Ky[iy]) +
-            (psiEyx[ix,iy,iz] - psiExy[ix,iy,iz])
+            (dEyx / Kx[ix] - dExy / Ky[iy]) + (psiEyx[ix,iy,iz] - psiExy[ix,iy,iz])
         )
     end
 end
@@ -597,7 +594,7 @@ end
     (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = model
     (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
-    (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
+    (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
     ix, iy, iz = @index(Global, NTuple)
@@ -607,35 +604,35 @@ end
         ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
         iy == 1 ? iym1 = Ny : iym1 = iy - 1
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
-        dHxy[ix,iy,iz] = (Hx[ix,iy,iz] - Hx[ix,iym1,iz]) / dy
-        dHxz[ix,iy,iz] = (Hx[ix,iy,iz] - Hx[ix,iy,izm1]) / dz
-        dHyx[ix,iy,iz] = (Hy[ix,iy,iz] - Hy[ixm1,iy,iz]) / dx
-        dHyz[ix,iy,iz] = (Hy[ix,iy,iz] - Hy[ix,iy,izm1]) / dz
-        dHzx[ix,iy,iz] = (Hz[ix,iy,iz] - Hz[ixm1,iy,iz]) / dx
-        dHzy[ix,iy,iz] = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
+        dHxy = (Hx[ix,iy,iz] - Hx[ix,iym1,iz]) / dy
+        dHxz = (Hx[ix,iy,iz] - Hx[ix,iy,izm1]) / dz
+        dHyx = (Hy[ix,iy,iz] - Hy[ixm1,iy,iz]) / dx
+        dHyz = (Hy[ix,iy,iz] - Hy[ix,iy,izm1]) / dz
+        dHzx = (Hz[ix,iy,iz] - Hz[ixm1,iy,iz]) / dx
+        dHzy = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
 
         # update CPML H:
-        psiHxy[ix,iy,iz] = By[iy] * psiHxy[ix,iy,iz] + Ay[iy] * dHxy[ix,iy,iz]
-        psiHxz[ix,iy,iz] = Bz[iz] * psiHxz[ix,iy,iz] + Az[iz] * dHxz[ix,iy,iz]
-        psiHyx[ix,iy,iz] = Bx[ix] * psiHyx[ix,iy,iz] + Ax[ix] * dHyx[ix,iy,iz]
-        psiHyz[ix,iy,iz] = Bz[iz] * psiHyz[ix,iy,iz] + Az[iz] * dHyz[ix,iy,iz]
-        psiHzx[ix,iy,iz] = Bx[ix] * psiHzx[ix,iy,iz] + Ax[ix] * dHzx[ix,iy,iz]
-        psiHzy[ix,iy,iz] = By[iy] * psiHzy[ix,iy,iz] + Ay[iy] * dHzy[ix,iy,iz]
+        psiHxy[ix,iy,iz] = By[iy] * psiHxy[ix,iy,iz] + Ay[iy] * dHxy
+        psiHxz[ix,iy,iz] = Bz[iz] * psiHxz[ix,iy,iz] + Az[iz] * dHxz
+        psiHyx[ix,iy,iz] = Bx[ix] * psiHyx[ix,iy,iz] + Ax[ix] * dHyx
+        psiHyz[ix,iy,iz] = Bz[iz] * psiHyz[ix,iy,iz] + Az[iz] * dHyz
+        psiHzx[ix,iy,iz] = Bx[ix] * psiHzx[ix,iy,iz] + Ax[ix] * dHzx
+        psiHzy[ix,iy,iz] = By[iy] * psiHzy[ix,iy,iz] + Ay[iy] * dHzy
 
         # update D:
         Dx[ix,iy,iz] = Md1[ix,iy,iz] * Dx[ix,iy,iz] +
                        Md2[ix,iy,iz] * (
-                           (dHzy[ix,iy,iz] / Ky[iy] - dHyz[ix,iy,iz] / Kz[iz]) +
+                           (dHzy / Ky[iy] - dHyz / Kz[iz]) +
                            (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz])
                        )
         Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] +
                        Md2[ix,iy,iz] * (
-                          (dHxz[ix,iy,iz] / Kz[iz] - dHzx[ix,iy,iz] / Kx[ix]) +
+                          (dHxz / Kz[iz] - dHzx / Kx[ix]) +
                           (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz])
                        )
         Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] +
                        Md2[ix,iy,iz] * (
-                          (dHyx[ix,iy,iz] / Kx[ix] - dHxy[ix,iy,iz] / Ky[iy]) +
+                          (dHyx / Kx[ix] - dHxy / Ky[iy]) +
                           (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz])
                        )
 
