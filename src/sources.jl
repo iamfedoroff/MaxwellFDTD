@@ -1,6 +1,9 @@
 abstract type Source end
 
 
+# ******************************************************************************************
+# Soft
+# ******************************************************************************************
 struct SoftSource{C, S, A, F, P} <: Source
     isrc :: C
     component :: S
@@ -13,6 +16,73 @@ end
 @adapt_structure SoftSource
 
 
+function SoftSource(
+    grid::Grid1D; geometry, component, frequency, amplitude, phase, waveform, p,
+)
+    (; z) = grid
+
+    geom = @. geometry(z)
+    isrc = findall(geom)
+
+    Amp, Phi = zeros(size(isrc)), zeros(size(isrc))
+    for (i, iz) in enumerate(isrc)
+        Amp[i] = amplitude(z[iz])
+        Phi[i] = phase(z[iz]) / frequency
+    end
+
+    return SoftSource(isrc, component, Amp, Phi, waveform, p)
+end
+
+
+function SoftSource(
+    grid::Grid2D; geometry, component, frequency, amplitude, phase, waveform, p,
+)
+    (; Nx, Nz, x, z) = grid
+
+    geom = [geometry(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
+    isrc = findall(geom)
+
+    Amp, Phi = zeros(size(isrc)), zeros(size(isrc))
+    for (i, ici) in enumerate(isrc)
+        ix, iz = ici[1], ici[2]
+        Amp[i] = amplitude(x[ix], z[iz])
+        Phi[i] = phase(x[ix], z[iz]) / frequency
+    end
+
+    return SoftSource(isrc, component, Amp, Phi, waveform, p)
+end
+
+
+function SoftSource(
+    grid::Grid3D; geometry, component, frequency, amplitude, phase, waveform, p,
+)
+    (; Nx, Ny, Nz, x, y, z) = grid
+
+    geom = [geometry(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    isrc = findall(geom)
+
+    Amp, Phi = zeros(size(isrc)), zeros(size(isrc))
+    for (i, ici) in enumerate(isrc)
+        ix, iy, iz = ici[1], ici[2], ici[3]
+        Amp[i] = amplitude(x[ix], y[iy], z[iz])
+        Phi[i] = phase(x[ix], y[iy], z[iz]) / frequency
+    end
+
+    return SoftSource(isrc, component, Amp, Phi, waveform, p)
+end
+
+
+function add_source!(field, source::SoftSource, t)
+    (; isrc, component, Amp, Phi, waveform, p) = source
+    F = getfield(field, component)
+    @views @. F[isrc] = F[isrc] + Amp * waveform(t - Phi, (p,))
+    return nothing
+end
+
+
+# ******************************************************************************************
+# Hard
+# ******************************************************************************************
 struct HardSource{C, S, A, F, P} <: Source
     isrc :: C
     component :: S
@@ -25,27 +95,10 @@ end
 @adapt_structure HardSource
 
 
-# Converts the type of the 'component' field from 'Symbol' to 'Int'
-function isbitify(source::Source, field)
+function HardSource(grid; geometry, component, frequency, amplitude, phase, waveform, p)
+    source = SoftSource(grid; geometry, component, frequency, amplitude, phase, waveform, p)
     (; isrc, component, Amp, Phi, waveform, p) = source
-    if typeof(component) == Symbol
-        icomp = findfirst(isequal(component), fieldnames(typeof(field)))
-    else
-        icomp = component
-    end
-    if typeof(source) <: SoftSource
-        return SoftSource(isrc, icomp, Amp, Phi, waveform, p)
-    elseif typeof(source) <: HardSource
-        return HardSource(isrc, icomp, Amp, Phi, waveform, p)
-    end
-end
-
-
-function add_source!(field, source::SoftSource, t)
-    (; isrc, component, Amp, Phi, waveform, p) = source
-    F = getfield(field, component)
-    @views @. F[isrc] = F[isrc] + Amp * waveform(t - Phi, (p,))
-    return nothing
+    return HardSource(isrc, component, Amp, Phi, waveform, p)
 end
 
 
@@ -57,136 +110,22 @@ function add_source!(field, source::HardSource, t)
 end
 
 
-# ******************************************************************************
-function PointSource(
-    grid::Grid1D;
-    position, component, frequency, amplitude=1, phase=0, waveform, p=(),
-    type=:soft,
-)
-    (; z) = grid
-
-    zsrc = position
-    izsrc = searchsortedfirst(z, zsrc)
-    isrc = CartesianIndices((izsrc:izsrc,))
-
-    Amp = amplitude
-    Phi = phase / frequency
-    Amp, Phi = promote(Amp, Phi)
-
-    if type == :soft
-        return SoftSource(isrc, component, Amp, Phi, waveform, p)
-    elseif type == :hard
-        return HardSource(isrc, component, Amp, Phi, waveform, p)
+# ******************************************************************************************
+# Util
+# ******************************************************************************************
+"""
+Converts the type of the 'component' field from 'Symbol' to 'Int'
+"""
+function isbitify(source::Source, field)
+    (; isrc, component, Amp, Phi, waveform, p) = source
+    if typeof(component) == Symbol
+        icomp = findfirst(isequal(component), fieldnames(typeof(field)))
     else
-        error("Wrong source type.")
+        icomp = component
     end
-end
-
-
-function PointSource(
-    grid::Grid2D;
-    position, component, frequency, amplitude=1, phase=0, waveform, p=(),
-    type=:soft,
-)
-    (; x, z) = grid
-
-    xsrc, zsrc = position
-    ixsrc = searchsortedfirst(x, xsrc)
-    izsrc = searchsortedfirst(z, zsrc)
-    isrc = CartesianIndices((ixsrc:ixsrc, izsrc:izsrc))
-
-    Amp = amplitude
-    Phi = phase / frequency
-    Amp, Phi = promote(Amp, Phi)
-
-    if type == :soft
-        return SoftSource(isrc, component, Amp, Phi, waveform, p)
-    elseif type == :hard
-        return HardSource(isrc, component, Amp, Phi, waveform, p)
-    else
-        error("Wrong source type.")
-    end
-end
-
-
-function PointSource(
-    grid::Grid3D;
-    position, component, frequency, amplitude=1, phase=0, waveform, p=(),
-    type=:soft,
-)
-    (; x, y, z) = grid
-
-    xsrc, ysrc, zsrc = position
-    ixsrc = searchsortedfirst(x, xsrc)
-    iysrc = searchsortedfirst(y, ysrc)
-    izsrc = searchsortedfirst(z, zsrc)
-    isrc = CartesianIndices((ixsrc:ixsrc, iysrc:iysrc, izsrc:izsrc))
-
-    Amp = amplitude
-    Phi = phase / frequency
-    Amp, Phi = promote(Amp, Phi)
-
-    if type == :soft
-        return SoftSource(isrc, component, Amp, Phi, waveform, p)
-    elseif type == :hard
-        return HardSource(isrc, component, Amp, Phi, waveform, p)
-    else
-        error("Wrong source type.")
-    end
-end
-
-
-# ******************************************************************************
-function LineSource(
-    grid::Grid2D;
-    position, component, frequency, amplitude, phase, waveform, p=(),
-    type=:soft,
-)
-    (; Nx, x, z) = grid
-
-    zsrc = position
-    izsrc = searchsortedfirst(z, zsrc)
-    isrc = CartesianIndices((1:Nx, izsrc:izsrc))
-
-    Amp, Phi = zeros(Nx), zeros(Nx)
-    for ix=1:Nx
-        Amp[ix] = amplitude(x[ix])
-        Phi[ix] = phase(x[ix]) / frequency
-    end
-
-    if type == :soft
-        return SoftSource(isrc, component, Amp, Phi, waveform, p)
-    elseif type == :hard
-        return HardSource(isrc, component, Amp, Phi, waveform, p)
-    else
-        error("Wrong source type.")
-    end
-end
-
-
-# ******************************************************************************
-function PlaneSource(
-    grid::Grid3D;
-    position, component, frequency, amplitude, phase, waveform, p=(),
-    type=:soft,
-)
-    (; Nx, Ny, x, y, z) = grid
-
-    zsrc = position
-    izsrc = searchsortedfirst(z, zsrc)
-    isrc = CartesianIndices((1:Nx, 1:Ny, izsrc:izsrc))
-
-    Amp, Phi = zeros(Nx,Ny), zeros(Nx,Ny)
-    for iy=1:Ny, ix=1:Nx
-        Amp[ix,iy] = amplitude(x[ix], y[iy])
-        Phi[ix,iy] = phase(x[ix], y[iy]) / frequency
-    end
-
-    if type == :soft
-        return SoftSource(isrc, component, Amp, Phi, waveform, p)
-    elseif type == :hard
-        return HardSource(isrc, component, Amp, Phi, waveform, p)
-    else
-        error("Wrong source type.")
+    if typeof(source) <: SoftSource
+        return SoftSource(isrc, icomp, Amp, Phi, waveform, p)
+    elseif typeof(source) <: HardSource
+        return HardSource(isrc, icomp, Amp, Phi, waveform, p)
     end
 end

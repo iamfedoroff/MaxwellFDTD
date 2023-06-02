@@ -14,6 +14,13 @@ adapt_storage(::CPU{T}, x::Array{TA}) where {T, TA<:Complex} = Array{Complex{T}}
 adapt_storage(::GPU{T}, x::Array{TA}) where {T, TA<:Complex} = CuArray{Complex{T}}(x)
 
 
+# Arrays of indices:
+adapt_storage(::CPU{T}, x::Array{TA}) where {T, TA<:Int} = Array{Int64}(x)
+adapt_storage(::GPU{T}, x::Array{TA}) where {T, TA<:Int} = CuArray{Int32}(x)
+adapt_storage(::CPU, x::Vector{<:CartesianIndex}) = x
+adapt_storage(::GPU, x::Vector{<:CartesianIndex}) = CuArray(x)
+
+
 # function adapt_storage(::CPU{T}, p::cFFTWPlan) where T
 #     tmp = zeros(Complex{T}, p.sz)
 #     return plan_fft!(tmp, p.region)

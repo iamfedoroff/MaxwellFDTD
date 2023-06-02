@@ -262,19 +262,19 @@ function step!(model::Model1D, it)
     update_H!(model)
     update_E!(model)
 
-    (; izl, lincHy, lincEx, izr, rincHy, rincEx, dt) = model
-    (; grid, Hy, Ex, Dx) = field
-    (; dz) = grid
+    # (; izl, lincHy, lincEx, izr, rincHy, rincEx, dt) = model
+    # (; grid, Hy, Ex, Dx) = field
+    # (; dz) = grid
 
-    Hy[izl] += dt / (MU0*dz) * lincEx[it]
-    Ex[izl] += dt / (EPS0*dz) * lincHy[it]
-    Dx[izl] += dt / dz * lincHy[it]
+    # Hy[izl] += dt / (MU0*dz) * lincEx[it]
+    # Ex[izl] += dt / (EPS0*dz) * lincHy[it]
+    # Dx[izl] += dt / dz * lincHy[it]
 
-    Hy[izr] -= dt / (MU0*dz) * rincEx[it]
-    Ex[izr] -= dt / (EPS0*dz) * rincHy[it]
-    Dx[izr] -= dt / dz * rincHy[it]
+    # Hy[izr] -= dt / (MU0*dz) * rincEx[it]
+    # Ex[izr] -= dt / (EPS0*dz) * rincHy[it]
+    # Dx[izr] -= dt / dz * rincHy[it]
 
-    # add_source!(field, source, t[it])
+    add_source!(field, source, t[it])
     return nothing
 end
 
@@ -578,33 +578,33 @@ function step!(model::Model2D, it)
     update_E!(model)
 
 
-    (; field, dt, ix1, ix2, iz1, iz2) = model
-    (; lincHy, rincHy, bincHy, tincHy, bincEx, tincEx, lincEz, rincEz) = model
-    (; grid, Hy, Dx, Dz, Ex, Ez) = field
-    (; dx, dz) = grid
+    # (; field, dt, ix1, ix2, iz1, iz2) = model
+    # (; lincHy, rincHy, bincHy, tincHy, bincEx, tincEx, lincEz, rincEz) = model
+    # (; grid, Hy, Dx, Dz, Ex, Ez) = field
+    # (; dx, dz) = grid
 
-    # left:
-    @. Hy[ix1,iz1:iz2-1] -= dt / (MU0*dx) * lincEz[:,it]
-    @. Ez[ix1,iz1:iz2-1] -= dt / (EPS0*dx) * lincHy[:,it]
-    @. Dz[ix1,iz1:iz2-1] -= dt / dx * lincHy[:,it]
+    # # left:
+    # @. Hy[ix1,iz1:iz2-1] -= dt / (MU0*dx) * lincEz[:,it]
+    # @. Ez[ix1,iz1:iz2-1] -= dt / (EPS0*dx) * lincHy[:,it]
+    # @. Dz[ix1,iz1:iz2-1] -= dt / dx * lincHy[:,it]
 
-    # right:
-    @. Hy[ix2,iz1:iz2-1] += dt / (MU0*dx) * rincEz[:,it]
-    @. Ez[ix2,iz1:iz2-1] += dt / (EPS0*dx) * rincHy[:,it]
-    @. Dz[ix2,iz1:iz2-1] += dt / dx * rincHy[:,it]
+    # # right:
+    # @. Hy[ix2,iz1:iz2-1] += dt / (MU0*dx) * rincEz[:,it]
+    # @. Ez[ix2,iz1:iz2-1] += dt / (EPS0*dx) * rincHy[:,it]
+    # @. Dz[ix2,iz1:iz2-1] += dt / dx * rincHy[:,it]
 
-    # bottom:
-    @. Hy[ix1:ix2-1,iz1] += dt / (MU0*dz) * bincEx[:,it]
-    @. Ex[ix1:ix2-1,iz1] += dt / (EPS0*dz) * bincHy[:,it]
-    @. Dx[ix1:ix2-1,iz1] += dt / dz * bincHy[:,it]
+    # # bottom:
+    # @. Hy[ix1:ix2-1,iz1] += dt / (MU0*dz) * bincEx[:,it]
+    # @. Ex[ix1:ix2-1,iz1] += dt / (EPS0*dz) * bincHy[:,it]
+    # @. Dx[ix1:ix2-1,iz1] += dt / dz * bincHy[:,it]
 
-    # top:
-    @. Hy[ix1:ix2-1,iz2] -= dt / (MU0*dz) * tincEx[:,it]
-    @. Ex[ix1:ix2-1,iz2] -= dt / (EPS0*dz) * tincHy[:,it]
-    @. Dx[ix1:ix2-1,iz2] -= dt / dz * tincHy[:,it]
+    # # top:
+    # @. Hy[ix1:ix2-1,iz2] -= dt / (MU0*dz) * tincEx[:,it]
+    # @. Ex[ix1:ix2-1,iz2] -= dt / (EPS0*dz) * tincHy[:,it]
+    # @. Dx[ix1:ix2-1,iz2] -= dt / dz * tincHy[:,it]
 
 
-    # add_source!(field, source, t[it])
+    add_source!(field, source, t[it])
     return nothing
 end
 
