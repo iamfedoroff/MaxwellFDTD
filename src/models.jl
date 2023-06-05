@@ -2,10 +2,9 @@ abstract type Model end
 
 
 function step!(model, it)
-    (; field, source, t) = model
     update_H!(model)
     update_E!(model)
-    add_source!(field, source, t[it])
+    add_source!(model, model.source, it)
     return nothing
 end
 
@@ -46,10 +45,10 @@ function solve!(
 end
 
 
-# ******************************************************************************
+# ******************************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
-# ******************************************************************************
-struct Model1D{F, S, T, R, A, AP, V}
+# ******************************************************************************************
+struct Model1D{F, S, T, R, A, AP}
     field :: F
     source :: S
     # Time grid:
@@ -74,13 +73,6 @@ struct Model1D{F, S, T, R, A, AP, V}
     Bz :: A
     psiExz :: A
     psiHyz :: A
-    #
-    izl :: Int
-    lincEx :: V
-    lincHy :: V
-    izr :: Int
-    rincEx :: V
-    rincHy :: V
 end
 
 @adapt_structure Model1D
@@ -133,41 +125,9 @@ function Model(
     Kz, Az, Bz = pml(z, pml_box, dt)
     psiExz, psiHyz = zeros(Nz), zeros(Nz)
 
-
-
-    # fname = "/media/storage/work/workflow/2023_02_20_aom_highNA/simulation/fdtd/results/1d_out_tfsf_gauss.hdf"
-    # fname = "/media/storage/work/workflow/2023_02_20_aom_highNA/simulation/fdtd/results/1d_out_tfsf_pulse.hdf"
-    fname = "/media/storage/work/workflow/2023_02_20_aom_highNA/simulation/fdtd/results/1d_out_tfsf_pulse_Dx.hdf"
-    fp = HDF5.h5open(fname, "r")
-    zex = HDF5.read(fp, "z")
-    tex = HDF5.read(fp, "t")
-    exHy = HDF5.read(fp, "Hy")
-    exEx = HDF5.read(fp, "Ex")
-    HDF5.close(fp)
-
-    itpHy = linear_interpolation((zex,tex), exHy; extrapolation_bc=Flat())
-    itpEx = linear_interpolation((zex,tex), exEx; extrapolation_bc=Flat())
-
-    zl = 20e-6
-    izl = argmin(abs.(zex .- zl))
-    # lincEx = exEx[izl,:]
-    # lincHy = exHy[izl,:]
-    lincHy = @. itpHy(z[izl], t)   # use z[izl] instead of zl, since they can be different
-    lincEx = @. itpEx(z[izl], t)
-
-    zr = 80e-6
-    izr = argmin(abs.(zex .- zr))
-    # rincEx = exEx[izr,:]
-    # rincHy = exHy[izr,:]
-    rincHy = @. itpHy(z[izr], t)   # use z[izr] instead of zr, since they can be different
-    rincEx = @. itpEx(z[izr], t)
-
-
-
     return Model1D(
         field, source, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Kz, Az, Bz, psiExz, psiHyz,
-        izl, lincEx, lincHy, izr, rincEx, rincHy,
     )
 end
 
@@ -257,32 +217,10 @@ function update_E_explicit!(model::Model1D)
 end
 
 
-function step!(model::Model1D, it)
-    (; field, source, t) = model
-    update_H!(model)
-    update_E!(model)
-
-    # (; izl, lincHy, lincEx, izr, rincHy, rincEx, dt) = model
-    # (; grid, Hy, Ex, Dx) = field
-    # (; dz) = grid
-
-    # Hy[izl] += dt / (MU0*dz) * lincEx[it]
-    # Ex[izl] += dt / (EPS0*dz) * lincHy[it]
-    # Dx[izl] += dt / dz * lincHy[it]
-
-    # Hy[izr] -= dt / (MU0*dz) * rincEx[it]
-    # Ex[izr] -= dt / (EPS0*dz) * rincHy[it]
-    # Dx[izr] -= dt / dz * rincHy[it]
-
-    add_source!(field, source, t[it])
-    return nothing
-end
-
-
-# ******************************************************************************
+# ******************************************************************************************
 # 2D
-# ******************************************************************************
-struct Model2D{F, S, T, R, A, AP, V, TI}
+# ******************************************************************************************
+struct Model2D{F, S, T, R, A, AP, V}
     field :: F
     source :: S
     # Time grid:
@@ -315,19 +253,6 @@ struct Model2D{F, S, T, R, A, AP, V, TI}
     psiEzx :: A
     psiHyx :: A
     psiHyz :: A
-    #
-    ix1 :: Int
-    ix2 :: Int
-    iz1 :: Int
-    iz2 :: Int
-    lincHy :: TI
-    rincHy :: TI
-    bincHy :: TI
-    tincHy :: TI
-    bincEx :: TI
-    tincEx :: TI
-    lincEz :: TI
-    rincEz :: TI
 end
 
 @adapt_structure Model2D
@@ -382,93 +307,10 @@ function Model(
     Kz, Az, Bz = pml(z, pml_box[3:4], dt)
     psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
 
-
-
-    fname = "/media/storage/work/workflow/2023_02_20_aom_highNA/simulation/fdtd/results/2d_out_tfsf.hdf"
-    fp = HDF5.h5open(fname, "r")
-    xex = HDF5.read(fp, "z")
-    zex = HDF5.read(fp, "z")
-    tex = HDF5.read(fp, "t")
-    exHy = HDF5.read(fp, "Hy")
-    exEx = HDF5.read(fp, "Ex")
-    exEz = HDF5.read(fp, "Ez")
-    HDF5.close(fp)
-
-    x1, x2 = -10e-6, 20e-6
-    z1, z2 = -10e-6, 20e-6
-    ix1 = argmin(abs.(xex .- x1))
-    ix2 = argmin(abs.(xex .- x2))
-    iz1 = argmin(abs.(zex .- z1))
-    iz2 = argmin(abs.(zex .- z2))
-
-    # # left:
-    # lincHy = exHy[ix1,iz1:iz2-1,:]
-    # lincEz = exEz[ix1,iz1:iz2-1,:]
-
-    # # right:
-    # rincHy = exHy[ix2,iz1:iz2-1,:]
-    # rincEz = exEz[ix2,iz1:iz2-1,:]
-
-    # # bottom:
-    # bincHy = exHy[ix1:ix2-1,iz1,:]
-    # bincEx = exEx[ix1:ix2-1,iz1,:]
-
-    # # top:
-    # tincHy = exHy[ix1:ix2-1,iz2,:]
-    # tincEx = exEx[ix1:ix2-1,iz2,:]
-
-
-    # sx, sz, st = 4, 4, 4
-    # xex = xex[1:sx:end]
-    # zex = zex[1:sz:end]
-    # tex = tex[1:st:end]
-    # exHy = exHy[1:sx:end,1:sz:end,1:st:end]
-    # exEx = exEx[1:sx:end,1:sz:end,1:st:end]
-    # exEz = exEz[1:sx:end,1:sz:end,1:st:end]
-
-    itpHy = linear_interpolation((xex,zex,tex), exHy; extrapolation_bc=Flat())
-    itpEx = linear_interpolation((xex,zex,tex), exEx; extrapolation_bc=Flat())
-    itpEz = linear_interpolation((xex,zex,tex), exEz; extrapolation_bc=Flat())
-
-    Nxi = ix2 - ix1
-    Nzi = iz2 - iz1
-
-    # left:
-    lincHy, lincEz = zeros(Nzi,Nt), zeros(Nzi,Nt)
-    for it=1:Nt, iz=iz1:iz2-1
-        lincHy[iz-iz1+1,it] = itpHy(x[ix1], z[iz], t[it])
-        lincEz[iz-iz1+1,it] = itpEz(x[ix1], z[iz], t[it])
-    end
-
-    # right:
-    rincHy, rincEz = zeros(Nzi,Nt), zeros(Nzi,Nt)
-    for it=1:Nt, iz=iz1:iz2-1
-        rincHy[iz-iz1+1,it] = itpHy(x[ix2], z[iz], t[it])
-        rincEz[iz-iz1+1,it] = itpEz(x[ix2], z[iz], t[it])
-    end
-
-    # bottom:
-    bincHy, bincEx = zeros(Nxi,Nt), zeros(Nxi,Nt)
-    for it=1:Nt, ix=ix1:ix2-1
-        bincHy[ix-ix1+1,it] = itpHy(x[ix], z[iz1], t[it])
-        bincEx[ix-ix1+1,it] = itpEx(x[ix], z[iz1], t[it])
-    end
-
-    # top:
-    tincHy, tincEx = zeros(Nxi,Nt), zeros(Nxi,Nt)
-    for it=1:Nt, ix=ix1:ix2-1
-        tincHy[ix-ix1+1,it] = itpHy(x[ix], z[iz2], t[it])
-        tincEx[ix-ix1+1,it] = itpEx(x[ix], z[iz2], t[it])
-    end
-
-
-
     return Model2D(
         field, source, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
         Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx, psiHyx, psiHyz,
-        ix1, ix2, iz1, iz2, lincHy, rincHy, bincHy, tincHy, bincEx, tincEx,
-        lincEz, rincEz,
     )
 end
 
@@ -572,46 +414,9 @@ function update_E!(model::Model2D)
 end
 
 
-function step!(model::Model2D, it)
-    (; field, source, t) = model
-    update_H!(model)
-    update_E!(model)
-
-
-    # (; field, dt, ix1, ix2, iz1, iz2) = model
-    # (; lincHy, rincHy, bincHy, tincHy, bincEx, tincEx, lincEz, rincEz) = model
-    # (; grid, Hy, Dx, Dz, Ex, Ez) = field
-    # (; dx, dz) = grid
-
-    # # left:
-    # @. Hy[ix1,iz1:iz2-1] -= dt / (MU0*dx) * lincEz[:,it]
-    # @. Ez[ix1,iz1:iz2-1] -= dt / (EPS0*dx) * lincHy[:,it]
-    # @. Dz[ix1,iz1:iz2-1] -= dt / dx * lincHy[:,it]
-
-    # # right:
-    # @. Hy[ix2,iz1:iz2-1] += dt / (MU0*dx) * rincEz[:,it]
-    # @. Ez[ix2,iz1:iz2-1] += dt / (EPS0*dx) * rincHy[:,it]
-    # @. Dz[ix2,iz1:iz2-1] += dt / dx * rincHy[:,it]
-
-    # # bottom:
-    # @. Hy[ix1:ix2-1,iz1] += dt / (MU0*dz) * bincEx[:,it]
-    # @. Ex[ix1:ix2-1,iz1] += dt / (EPS0*dz) * bincHy[:,it]
-    # @. Dx[ix1:ix2-1,iz1] += dt / dz * bincHy[:,it]
-
-    # # top:
-    # @. Hy[ix1:ix2-1,iz2] -= dt / (MU0*dz) * tincEx[:,it]
-    # @. Ex[ix1:ix2-1,iz2] -= dt / (EPS0*dz) * tincHy[:,it]
-    # @. Dx[ix1:ix2-1,iz2] -= dt / dz * tincHy[:,it]
-
-
-    add_source!(field, source, t[it])
-    return nothing
-end
-
-
-# ******************************************************************************
+# ******************************************************************************************
 # 3D
-# ******************************************************************************
+# ******************************************************************************************
 struct Model3D{F, S, T, R, A, AP, V}
     field :: F
     source :: S
@@ -875,10 +680,12 @@ function update_E_explicit!(model::Model3D)
 end
 
 
-# ******************************************************************************
+# ******************************************************************************************
 # Util
-# ******************************************************************************
-# https://julialang.org/blog/2016/02/iteration/#a_multidimensional_boxcar_filter
+# ******************************************************************************************
+"""
+https://julialang.org/blog/2016/02/iteration/#a_multidimensional_boxcar_filter
+"""
 function moving_average(A::AbstractArray, m::Int)
     if eltype(A) == Int
         out = zeros(size(A))

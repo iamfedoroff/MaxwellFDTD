@@ -20,9 +20,9 @@ include("gpu.jl")
 include("grids.jl")
 include("pml.jl")
 include("fields.jl")
-include("sources.jl")
 include("materials.jl")
 include("models.jl")
+include("sources.jl")
 include("outputs.jl")
 
 end
