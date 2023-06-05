@@ -79,12 +79,7 @@ end
 
 
 function Model(
-    grid::Grid1D, source_data;
-    tmax,
-    CN=1,
-    geometry,
-    material,
-    pml_box=(0,0),
+    grid::Grid1D, source_data; tmax, CN=0.5, geometry, material, pml_box=(0,0),
 )
     (; Nz, dz, z) = grid
 
@@ -260,12 +255,7 @@ end
 
 
 function Model(
-    grid::Grid2D, source_data;
-    tmax,
-    CN=1,
-    geometry,
-    material,
-    pml_box=(0,0,0,0),
+    grid::Grid2D, source_data; tmax, CN=0.5, geometry, material, pml_box=(0,0,0,0),
 )
     (; Nx, Nz, dx, dz, x, z) = grid
 
@@ -472,12 +462,7 @@ end
 
 
 function Model(
-    grid::Grid3D, source_data;
-    tmax,
-    CN=1,
-    geometry,
-    material,
-    pml_box=(0,0,0,0,0,0),
+    grid::Grid3D, source_data; tmax, CN=0.5, geometry, material, pml_box=(0,0,0,0,0,0),
 )
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
