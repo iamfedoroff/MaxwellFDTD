@@ -79,7 +79,7 @@ end
 
 
 function Model(
-    grid::Grid1D, source;
+    grid::Grid1D, source_data;
     tmax,
     CN=1,
     geometry,
@@ -89,12 +89,13 @@ function Model(
     (; Nz, dz, z) = grid
 
     field = Field(grid)
-    source = isbitify(source, field)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
+
+    source = source_init(source_data, field, t)
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
@@ -259,7 +260,7 @@ end
 
 
 function Model(
-    grid::Grid2D, source;
+    grid::Grid2D, source_data;
     tmax,
     CN=1,
     geometry,
@@ -269,12 +270,13 @@ function Model(
     (; Nx, Nz, dx, dz, x, z) = grid
 
     field = Field(grid)
-    source = isbitify(source, field)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
+
+    source = source_init(source_data, field, t)
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
@@ -470,7 +472,7 @@ end
 
 
 function Model(
-    grid::Grid3D, source;
+    grid::Grid3D, source_data;
     tmax,
     CN=1,
     geometry,
@@ -480,12 +482,13 @@ function Model(
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
     field = Field(grid)
-    source = isbitify(source, field)
 
     # Time grid:
     dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
     Nt = ceil(Int, tmax / dt)
     t = range(0, tmax, Nt)
+
+    source = source_init(source_data, field, t)
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
