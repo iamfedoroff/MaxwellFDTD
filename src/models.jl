@@ -11,9 +11,21 @@ end
 
 function solve!(
     model; arch=CPU(), fname, nstride=nothing, nframes=nothing, dtout=nothing,
+    tfsf_record=false, tfsf_box=nothing, tfsf_fname=nothing,
 )
     model = adapt(arch, model)
     (; Nt, t) = model
+
+    if tfsf_record
+        if isnothing(tfsf_fname)
+            ext = splitext(fname)[end]
+            tfsf_fname = replace(fname, ext => "_tfsf" * ext)
+        end
+        if !isdir(dirname(tfsf_fname))
+            mkpath(dirname(tfsf_fname))
+        end
+        tfsf_data = prepare_tfsf_record(model, tfsf_box, tfsf_fname)
+    end
 
     out = Output(model; fname, nstride, nframes, dtout)
 
@@ -30,6 +42,10 @@ function solve!(
             end
             update_output_variables(out, model)
             synchronize()
+        end
+
+        if tfsf_record
+            write_tfsf_record(model, tfsf_data, it)
         end
 
         if it == 1
@@ -98,6 +114,17 @@ function Model(
     mu = [geometry(z[iz]) ? mu : 1 for iz=1:Nz]
     sigma = [geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+
+
+    # Compensation for the numerical dispersion:
+    # dt = t[2] - t[1]
+    # lam0 = 2e-6   # (m) wavelength
+    # w0 = 2*pi * C0 / lam0   # frequency
+    # sn = C0 * dt/dz * sin(w0/C0 * dz/2) / sin(w0 * dt/2)
+    # @show sn
+    # eps = @. sn * eps
+    # mu = @. sn * mu
+
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
