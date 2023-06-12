@@ -220,7 +220,7 @@ end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[iz] = Ex[iz] + dt * Me[iz] * ((0 - dHyz[iz] / Kz[iz]) + (0 - psiHyz[iz]))
+        # Ex[iz] += dt * Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
     end
 end
 function update_E!(model::Model1D)
@@ -420,8 +420,8 @@ end
 
         # # update E explicit:
         # (; dt) = model
-        # Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz[ix,iz]/Kz[iz]) + (0 - psiHyz[ix,iz]))
-        # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx[ix,iz]/Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
+        # Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
+        # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
     end
 end
 function update_E!(model::Model2D)
@@ -673,6 +673,13 @@ end
         Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
         Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
         Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
+
+
+        # update E explicit:
+        # (; dt) = model
+        # Ex[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
+        # Ey[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
+        # Ez[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
     end
 end
 function update_E!(model::Model3D)
@@ -680,17 +687,6 @@ function update_E!(model::Model3D)
     backend = get_backend(Ex)
     ndrange = size(Ex)
     update_E_kernel!(backend)(model; ndrange)
-    return nothing
-end
-
-
-function update_E_explicit!(model::Model3D)
-    (; field, dt, Me, Kx, Ky, Kz) = model
-    (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
-    (; Ex, Ey, Ez, dHxy, dHxz, dHyx, dHyz, dHzx, dHzy) = field
-    @. Ex = Ex + dt * Me * ((dHzy - dHyz) + (psiHzy - psiHyz))
-    @. Ey = Ey + dt * Me * ((dHxz - dHzx) + (psiHxz - psiHzx))
-    @. Ez = Ez + dt * Me * ((dHyx - dHxy) + (psiHyx - psiHxy))
     return nothing
 end
 
