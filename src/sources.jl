@@ -27,7 +27,15 @@ end
 @adapt_structure SoftSource
 
 
-function SoftSource(; geometry, amplitude, phase, waveform, p, frequency, component)
+function SoftSource(;
+    geometry, amplitude=nothing, phase=nothing, frequency=nothing, waveform, p, component,
+)
+    if !isnothing(phase) && isnothing(frequency)
+        error(
+            "I need to know the source frequency in order to convert its phase into " *
+            "a proper time delay"
+        )
+    end
     return DataSoftSource(geometry, amplitude, phase, waveform, p, frequency, component)
 end
 
@@ -36,6 +44,14 @@ function source_init(data::DataSoftSource, field::Field1D, t)
     (; geometry, amplitude, phase, waveform, p, frequency, component) = data
     (; grid) = field
     (; z) = grid
+
+    if isnothing(amplitude)
+        amplitude = z -> 1
+    end
+    if isnothing(phase)
+        phase = z -> 0
+        frequency = 1
+    end
 
     geom = @. geometry(z)
     isrc = findall(geom)
@@ -57,6 +73,14 @@ function source_init(data::DataSoftSource, field::Field2D, t)
     (; grid) = field
     (; Nx, Nz, x, z) = grid
 
+    if isnothing(amplitude)
+        amplitude = (x,z) -> 1
+    end
+    if isnothing(phase)
+        phase = (x,z) -> 0
+        frequency = 1
+    end
+
     geom = [geometry(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
     isrc = findall(geom)
 
@@ -77,6 +101,14 @@ function source_init(data::DataSoftSource, field::Field3D, t)
     (; geometry, amplitude, phase, waveform, p, frequency, component) = data
     (; grid) = field
     (; Nx, Ny, Nz, x, y, z) = grid
+
+    if isnothing(amplitude)
+        amplitude = (x,y,z) -> 1
+    end
+    if isnothing(phase)
+        phase = (x,y,z) -> 0
+        frequency = 1
+    end
 
     geom = [geometry(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     isrc = findall(geom)
@@ -128,7 +160,15 @@ end
 @adapt_structure HardSource
 
 
-function HardSource(; geometry, amplitude, phase, waveform, p, frequency, component)
+function HardSource(;
+    geometry, amplitude=nothing, phase=nothing, frequency=nothing, waveform, p, component,
+)
+    if !isnothing(phase) && isnothing(frequency)
+        error(
+            "I need to know the source frequency in order to convert its phase into " *
+            "a proper time delay"
+        )
+    end
     return DataHardSource(geometry, amplitude, phase, waveform, p, frequency, component)
 end
 
