@@ -10,11 +10,15 @@ end
 
 
 function solve!(
-    model; arch=CPU(), fname, nstride=nothing, nframes=nothing, dtout=nothing,
+    model; arch=CPU(), fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
     tfsf_record=false, tfsf_box=nothing, tfsf_fname=nothing,
 )
     model = adapt(arch, model)
     (; Nt, t) = model
+
+    if isnothing(fname)
+        fname = default_fname(model)
+    end
 
     if tfsf_record
         if isnothing(tfsf_fname)

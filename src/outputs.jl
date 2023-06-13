@@ -7,10 +7,7 @@ mutable struct Output{S, R, A}
 end
 
 
-function Output(
-    model;
-    fname="results/1d_out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-)
+function Output(model; fname, nstride=nothing, nframes=nothing, dtout=nothing)
     (; field, Nt, t) = model
     (; grid, Ex) = field
 
@@ -178,3 +175,13 @@ function update_output_variables(out, model::Model3D)
     @. Sa += sqrt((Ey*Hz - Ez*Hy)^2 + (Ez*Hx - Ex*Hz)^2 + (Ex*Hy - Ey*Hx)^2)
     return nothing
 end
+
+
+# ******************************************************************************
+# Util
+# ******************************************************************************
+default_fname(model::Model1D) = "results/1d_out.hdf"
+
+default_fname(model::Model2D) = "results/2d_out.hdf"
+
+default_fname(model::Model3D) = "results/3d_out.hdf"
