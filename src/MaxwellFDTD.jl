@@ -9,6 +9,11 @@ import KernelAbstractions: KernelAbstractions, @index, @kernel, get_backend
 import ProgressMeter: @showprogress
 import TimerOutputs: @timeit, reset_timer!, print_timer
 
+
+export CPU, GPU, Grid1D, Grid2D, Grid3D, SoftSource, HardSource, TFSFSource, solve!, Model,
+       Material, DebyeSusceptibility, DrudeSusceptibility, LorentzSusceptibility
+
+
 using PhysicalConstants.CODATA2018
 const C0 = SpeedOfLightInVacuum.val
 const EPS0 = VacuumElectricPermittivity.val
