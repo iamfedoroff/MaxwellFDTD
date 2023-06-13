@@ -95,7 +95,7 @@ end
 
 
 function Model(
-    grid::Grid1D, source_data; tmax, CN=0.5, geometry, material, pml_box=(0,0),
+    grid::Grid1D, source_data; tmax, CN=0.5, material, material_geometry, pml_box=(0,0),
 )
     (; Nz, dz, z) = grid
 
@@ -110,9 +110,9 @@ function Model(
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
-    eps = [geometry(z[iz]) ? eps : 1 for iz=1:Nz]
-    mu = [geometry(z[iz]) ? mu : 1 for iz=1:Nz]
-    sigma = [geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
+    eps = [material_geometry(z[iz]) ? eps : 1 for iz=1:Nz]
+    mu = [material_geometry(z[iz]) ? mu : 1 for iz=1:Nz]
+    sigma = [material_geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
 
@@ -138,9 +138,9 @@ function Model(
     Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
     for iz=1:Nz, iq=1:Nq
         Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,iz] = geometry(z[iz]) * Aq0
-        Bq[iq,iz] = geometry(z[iz]) * Bq0
-        Cq[iq,iz] = geometry(z[iz]) * Cq0
+        Aq[iq,iz] = material_geometry(z[iz]) * Aq0
+        Bq[iq,iz] = material_geometry(z[iz]) * Bq0
+        Cq[iq,iz] = material_geometry(z[iz]) * Cq0
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
 
@@ -282,7 +282,7 @@ end
 
 
 function Model(
-    grid::Grid2D, source_data; tmax, CN=0.5, geometry, material, pml_box=(0,0,0,0),
+    grid::Grid2D, source_data; tmax, CN=0.5, material, material_geometry, pml_box=(0,0,0,0),
 )
     (; Nx, Nz, dx, dz, x, z) = grid
 
@@ -297,9 +297,9 @@ function Model(
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
-    eps = [geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
+    eps = [material_geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
+    mu = [material_geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
+    sigma = [material_geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Update coefficients for H, E and D fields:
@@ -314,9 +314,9 @@ function Model(
     Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
     for iz=1:Nz, ix=1:Nx, iq=1:Nq
         Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,ix,iz] = geometry(x[ix],z[iz]) * Aq0
-        Bq[iq,ix,iz] = geometry(x[ix],z[iz]) * Bq0
-        Cq[iq,ix,iz] = geometry(x[ix],z[iz]) * Cq0
+        Aq[iq,ix,iz] = material_geometry(x[ix],z[iz]) * Aq0
+        Bq[iq,ix,iz] = material_geometry(x[ix],z[iz]) * Bq0
+        Cq[iq,ix,iz] = material_geometry(x[ix],z[iz]) * Cq0
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
     Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
@@ -489,7 +489,8 @@ end
 
 
 function Model(
-    grid::Grid3D, source_data; tmax, CN=0.5, geometry, material, pml_box=(0,0,0,0,0,0),
+    grid::Grid3D, source_data;
+    tmax, CN=0.5, material, material_geometry, pml_box=(0,0,0,0,0,0),
 )
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
@@ -504,9 +505,9 @@ function Model(
 
     # Permittivity, permeability, and conductivity:
     (; eps, mu, sigma) = material
-    eps = [geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    mu = [geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    sigma = [geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    eps = [material_geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    mu = [material_geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    sigma = [material_geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Update coefficients for H, E and D fields:
@@ -521,9 +522,9 @@ function Model(
     Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
         Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Aq0
-        Bq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Bq0
-        Cq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Cq0
+        Aq[iq,ix,iy,iz] = material_geometry(x[ix],y[iy],z[iz]) * Aq0
+        Bq[iq,ix,iy,iz] = material_geometry(x[ix],y[iy],z[iz]) * Bq0
+        Cq[iq,ix,iy,iz] = material_geometry(x[ix],y[iy],z[iz]) * Cq0
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
