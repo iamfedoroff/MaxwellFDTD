@@ -99,7 +99,8 @@ end
 
 
 function Model(
-    grid::Grid1D, source_data; tmax, CN=0.5, material, material_geometry, pml_box=(0,0),
+    grid::Grid1D, source_data;
+    tmax, CN=0.5, material=nothing, material_geometry=nothing, pml_box=(0,0),
 )
     (; Nz, dz, z) = grid
 
@@ -112,12 +113,39 @@ function Model(
 
     source = source_init(source_data, field, t)
 
+    # Material processing:
+    if isnothing(material)
+        material_geometry = z -> false
+        eps = 1
+        mu = 1
+        sigma = 0
+        chi = [nothing]
+    elseif isnothing(material_geometry)
+        @error """
+
+            You gave me the material, but did not tell where to place it.
+            Please, specify the material geometry.
+        """
+    else
+        (; eps, mu, sigma, chi) = material
+    end
+
     # Permittivity, permeability, and conductivity:
-    (; eps, mu, sigma) = material
     eps = [material_geometry(z[iz]) ? eps : 1 for iz=1:Nz]
     mu = [material_geometry(z[iz]) ? mu : 1 for iz=1:Nz]
     sigma = [material_geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+
+    # Variables for ADE dispersion calculation:
+    Nq = length(chi)
+    Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
+    for iz=1:Nz, iq=1:Nq
+        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+        Aq[iq,iz] = material_geometry(z[iz]) * Aq0
+        Bq[iq,iz] = material_geometry(z[iz]) * Bq0
+        Cq[iq,iz] = material_geometry(z[iz]) * Cq0
+    end
+    Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
 
 
     # Compensation for the numerical dispersion:
@@ -135,18 +163,6 @@ function Model(
     Me = @. 1 / (EPS0*eps)
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
-
-    # Variables for ADE dispersion calculation:
-    (; chi) = material
-    Nq = length(chi)
-    Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
-    for iz=1:Nz, iq=1:Nq
-        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,iz] = material_geometry(z[iz]) * Aq0
-        Bq[iq,iz] = material_geometry(z[iz]) * Bq0
-        Cq[iq,iz] = material_geometry(z[iz]) * Cq0
-    end
-    Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
 
     # CPML variables:
     Kz, Az, Bz = pml(z, pml_box, dt)
@@ -286,7 +302,8 @@ end
 
 
 function Model(
-    grid::Grid2D, source_data; tmax, CN=0.5, material, material_geometry, pml_box=(0,0,0,0),
+    grid::Grid2D, source_data;
+    tmax, CN=0.5, material=nothing, material_geometry=nothing, pml_box=(0,0,0,0),
 )
     (; Nx, Nz, dx, dz, x, z) = grid
 
@@ -299,21 +316,30 @@ function Model(
 
     source = source_init(source_data, field, t)
 
+    # Material processing:
+    if isnothing(material)
+        material_geometry = (x,z) -> false
+        eps = 1
+        mu = 1
+        sigma = 0
+        chi = [nothing]
+    elseif isnothing(material_geometry)
+        @error """
+
+            You gave me the material, but did not tell where to place it.
+            Please, specify the material geometry.
+        """
+    else
+        (; eps, mu, sigma, chi) = material
+    end
+
     # Permittivity, permeability, and conductivity:
-    (; eps, mu, sigma) = material
     eps = [material_geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
     mu = [material_geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
     sigma = [material_geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
-    # Update coefficients for H, E and D fields:
-    Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
-    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = @. dt / (1 + sigma*dt/2)
-
     # Variables for ADE dispersion calculation:
-    (; chi) = material
     Nq = length(chi)
     Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
     for iz=1:Nz, ix=1:Nx, iq=1:Nq
@@ -324,6 +350,12 @@ function Model(
     end
     Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
     Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
+
+    # Update coefficients for H, E and D fields:
+    Mh = @. dt / (MU0*mu)
+    Me = @. 1 / (EPS0*eps)
+    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = @. dt / (1 + sigma*dt/2)
 
     # CPML variables:
     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
@@ -422,7 +454,7 @@ end
         Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
 
 
-        # # update E explicit:
+        # update E explicit:
         # (; dt) = model
         # Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
         # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
@@ -494,7 +526,7 @@ end
 
 function Model(
     grid::Grid3D, source_data;
-    tmax, CN=0.5, material, material_geometry, pml_box=(0,0,0,0,0,0),
+    tmax, CN=0.5, material=nothing, material_geometry=nothing, pml_box=(0,0,0,0,0,0),
 )
     (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
 
@@ -507,21 +539,30 @@ function Model(
 
     source = source_init(source_data, field, t)
 
+    # Material processing:
+    if isnothing(material)
+        material_geometry = (x,y,z) -> false
+        eps = 1
+        mu = 1
+        sigma = 0
+        chi = [nothing]
+    elseif isnothing(material_geometry)
+        @error """
+
+            You gave me the material, but did not tell where to place it.
+            Please, specify the material geometry.
+        """
+    else
+        (; eps, mu, sigma, chi) = material
+    end
+
     # Permittivity, permeability, and conductivity:
-    (; eps, mu, sigma) = material
     eps = [material_geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     mu = [material_geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     sigma = [material_geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
-    # Update coefficients for H, E and D fields:
-    Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
-    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = @. dt / (1 + sigma*dt/2)
-
     # Variables for ADE dispersion calculation:
-    (; chi) = material
     Nq = length(chi)
     Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
@@ -533,6 +574,12 @@ function Model(
     Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+
+    # Update coefficients for H, E and D fields:
+    Mh = @. dt / (MU0*mu)
+    Me = @. 1 / (EPS0*eps)
+    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = @. dt / (1 + sigma*dt/2)
 
     # CPML variables:
     Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
