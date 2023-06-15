@@ -36,7 +36,9 @@ function solve!(
     @showprogress 1 for it=1:Nt
         @timeit "model step" begin
             step!(model, it)
-            synchronize()
+            if CUDA.functional()
+                synchronize()
+            end
         end
 
         @timeit "output" begin
@@ -45,7 +47,9 @@ function solve!(
                 out.itout += 1
             end
             update_output_variables(out, model)
-            synchronize()
+            if CUDA.functional()
+                synchronize()
+            end
         end
 
         if tfsf_record
