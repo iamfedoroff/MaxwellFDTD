@@ -528,11 +528,6 @@ function source_init(data::DataTFSFSource, field::Field3D, t)
     iz1 = argmin(abs.(z .- z1))
     iz2 = argmin(abs.(z .- z2))
 
-    Nxi = ix2 - ix1
-    Nyi = iy2 - iy1
-    Nzi = iz2 - iz1
-    Nt = length(t)
-
     return TFSFSource3D(
         ix1, ix2, iy1, iy2, iz1, iz2,
         incEz_1yz, incEy_1yz, incHz_1yz, incHy_1yz,
@@ -557,53 +552,55 @@ function add_source!(model, source::TFSFSource3D, it)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; dx, dy, dz) = grid
 
+    Cm, Ce = dt/MU0, dt/EPS0
+
     # 1yz:
-    @views @. Hy[ix1,iy1:iy2-1,iz1:iz2-1] -= dt / (MU0*dx) * incEz_1yz[:,:,it]
-    @views @. Hz[ix1,iy1:iy2-1,iz1:iz2-1] += dt / (MU0*dx) * incEy_1yz[:,:,it]
-    @views @. Ey[ix1,iy1:iy2-1,iz1:iz2-1] += dt / (EPS0*dx) * incHz_1yz[:,:,it]
-    @views @. Ez[ix1,iy1:iy2-1,iz1:iz2-1] -= dt / (EPS0*dx) * incHy_1yz[:,:,it]
-    @views @. Dy[ix1,iy1:iy2-1,iz1:iz2-1] += dt / dx * incHz_1yz[:,:,it]
-    @views @. Dz[ix1,iy1:iy2-1,iz1:iz2-1] -= dt / dx * incHy_1yz[:,:,it]
+    @views @. Hy[ix1-1,iy1:iy2,iz1:iz2-1] -= Cm/dx * incEz_1yz[:,:,it]
+    @views @. Hz[ix1-1,iy1:iy2-1,iz1:iz2] += Cm/dx * incEy_1yz[:,:,it]
+    @views @. Ey[ix1,iy1:iy2-1,iz1:iz2] += Ce/dx * incHz_1yz[:,:,it]
+    @views @. Ez[ix1,iy1:iy2,iz1:iz2-1] -= Ce/dx * incHy_1yz[:,:,it]
+    @views @. Dy[ix1,iy1:iy2-1,iz1:iz2] += EPS0 * Ce/dx * incHz_1yz[:,:,it]
+    @views @. Dz[ix1,iy1:iy2,iz1:iz2-1] -= EPS0 * Ce/dx * incHy_1yz[:,:,it]
 
     # 2yz:
-    @views @. Hy[ix2,iy1:iy2-1,iz1:iz2-1] += dt / (MU0*dx) * incEz_2yz[:,:,it]
-    @views @. Hz[ix2,iy1:iy2-1,iz1:iz2-1] -= dt / (MU0*dx) * incEy_2yz[:,:,it]
-    @views @. Ey[ix2,iy1:iy2-1,iz1:iz2-1] -= dt / (EPS0*dx) * incHz_2yz[:,:,it]
-    @views @. Ez[ix2,iy1:iy2-1,iz1:iz2-1] += dt / (EPS0*dx) * incHy_2yz[:,:,it]
-    @views @. Dy[ix2,iy1:iy2-1,iz1:iz2-1] -= dt / dx * incHz_2yz[:,:,it]
-    @views @. Dz[ix2,iy1:iy2-1,iz1:iz2-1] += dt / dx * incHy_2yz[:,:,it]
+    @views @. Hy[ix2,iy1:iy2,iz1:iz2-1] += Cm/dx * incEz_2yz[:,:,it]
+    @views @. Hz[ix2,iy1:iy2-1,iz1:iz2] -= Cm/dx * incEy_2yz[:,:,it]
+    @views @. Ey[ix2,iy1:iy2-1,iz1:iz2] -= Ce/dx * incHz_2yz[:,:,it]
+    @views @. Ez[ix2,iy1:iy2,iz1:iz2-1] += Ce/dx * incHy_2yz[:,:,it]
+    @views @. Dy[ix2,iy1:iy2-1,iz1:iz2] -= EPS0 * Ce/dx * incHz_2yz[:,:,it]
+    @views @. Dz[ix2,iy1:iy2,iz1:iz2-1] += EPS0 * Ce/dx * incHy_2yz[:,:,it]
 
     # x1z:
-    @views @. Hx[ix1:ix2-1,iy1,iz1:iz2-1] += dt / (MU0*dy) * incEz_x1z[:,:,it]
-    @views @. Hz[ix1:ix2-1,iy1,iz1:iz2-1] -= dt / (MU0*dy) * incEx_x1z[:,:,it]
-    @views @. Ex[ix1:ix2-1,iy1,iz1:iz2-1] -= dt / (EPS0*dy) * incHz_x1z[:,:,it]
-    @views @. Ez[ix1:ix2-1,iy1,iz1:iz2-1] += dt / (EPS0*dy) * incHx_x1z[:,:,it]
-    @views @. Dx[ix1:ix2-1,iy1,iz1:iz2-1] -= dt / dy * incHz_x1z[:,:,it]
-    @views @. Dz[ix1:ix2-1,iy1,iz1:iz2-1] += dt / dy * incHx_x1z[:,:,it]
+    @views @. Hx[ix1:ix2,iy1-1,iz1:iz2-1] += Cm/dy * incEz_x1z[:,:,it]
+    @views @. Hz[ix1:ix2-1,iy1-1,iz1:iz2] -= Cm/dy * incEx_x1z[:,:,it]
+    @views @. Ex[ix1:ix2-1,iy1,iz1:iz2] -= Ce/dy * incHz_x1z[:,:,it]
+    @views @. Ez[ix1:ix2,iy1,iz1:iz2-1] += Ce/dy * incHx_x1z[:,:,it]
+    @views @. Dx[ix1:ix2-1,iy1,iz1:iz2] -= EPS0 * Ce/dy * incHz_x1z[:,:,it]
+    @views @. Dz[ix1:ix2,iy1,iz1:iz2-1] += EPS0 * Ce/dy * incHx_x1z[:,:,it]
 
     # x2z:
-    @views @. Hx[ix1:ix2-1,iy2,iz1:iz2-1] -= dt / (MU0*dy) * incEz_x2z[:,:,it]
-    @views @. Hz[ix1:ix2-1,iy2,iz1:iz2-1] += dt / (MU0*dy) * incEx_x2z[:,:,it]
-    @views @. Ex[ix1:ix2-1,iy2,iz1:iz2-1] += dt / (EPS0*dy) * incHz_x2z[:,:,it]
-    @views @. Ez[ix1:ix2-1,iy2,iz1:iz2-1] -= dt / (EPS0*dy) * incHx_x2z[:,:,it]
-    @views @. Dx[ix1:ix2-1,iy2,iz1:iz2-1] += dt / dy * incHz_x2z[:,:,it]
-    @views @. Dz[ix1:ix2-1,iy2,iz1:iz2-1] -= dt / dy * incHx_x2z[:,:,it]
+    @views @. Hx[ix1:ix2,iy2,iz1:iz2-1] -= Cm/dy * incEz_x2z[:,:,it]
+    @views @. Hz[ix1:ix2-1,iy2,iz1:iz2] += Cm/dy * incEx_x2z[:,:,it]
+    @views @. Ex[ix1:ix2-1,iy2,iz1:iz2] += Ce/dy * incHz_x2z[:,:,it]
+    @views @. Ez[ix1:ix2,iy2,iz1:iz2-1] -= Ce/dy * incHx_x2z[:,:,it]
+    @views @. Dx[ix1:ix2-1,iy2,iz1:iz2] += EPS0 * Ce/dy * incHz_x2z[:,:,it]
+    @views @. Dz[ix1:ix2,iy2,iz1:iz2-1] -= EPS0 * Ce/dy * incHx_x2z[:,:,it]
 
     # xy1:
-    @views @. Hx[ix1:ix2-1,iy1:iy2-1,iz1] -= dt / (MU0*dz) * incEy_xy1[:,:,it]
-    @views @. Hy[ix1:ix2-1,iy1:iy2-1,iz1] += dt / (MU0*dz) * incEx_xy1[:,:,it]
-    @views @. Ex[ix1:ix2-1,iy1:iy2-1,iz1] += dt / (EPS0*dz) * incHy_xy1[:,:,it]
-    @views @. Ey[ix1:ix2-1,iy1:iy2-1,iz1] -= dt / (EPS0*dz) * incHx_xy1[:,:,it]
-    @views @. Dx[ix1:ix2-1,iy1:iy2-1,iz1] += dt / dz * incHy_xy1[:,:,it]
-    @views @. Dy[ix1:ix2-1,iy1:iy2-1,iz1] -= dt / dz * incHx_xy1[:,:,it]
+    @views @. Hx[ix1:ix2,iy1:iy2-1,iz1-1] -= Cm/dz * incEy_xy1[:,:,it]
+    @views @. Hy[ix1:ix2-1,iy1:iy2,iz1-1] += Cm/dz * incEx_xy1[:,:,it]
+    @views @. Ex[ix1:ix2-1,iy1:iy2,iz1] += Ce/dz * incHy_xy1[:,:,it]
+    @views @. Ey[ix1:ix2,iy1:iy2-1,iz1] -= Ce/dz * incHx_xy1[:,:,it]
+    @views @. Dx[ix1:ix2-1,iy1:iy2,iz1] += EPS0 * Ce/dz * incHy_xy1[:,:,it]
+    @views @. Dy[ix1:ix2,iy1:iy2-1,iz1] -= EPS0 * Ce/dz * incHx_xy1[:,:,it]
 
     # xy2
-    @views @. Hx[ix1:ix2-1,iy1:iy2-1,iz2] += dt / (MU0*dz) * incEy_xy2[:,:,it]
-    @views @. Hy[ix1:ix2-1,iy1:iy2-1,iz2] -= dt / (MU0*dz) * incEx_xy2[:,:,it]
-    @views @. Ex[ix1:ix2-1,iy1:iy2-1,iz2] -= dt / (EPS0*dz) * incHy_xy2[:,:,it]
-    @views @. Ey[ix1:ix2-1,iy1:iy2-1,iz2] += dt / (EPS0*dz) * incHx_xy2[:,:,it]
-    @views @. Dx[ix1:ix2-1,iy1:iy2-1,iz2] -= dt / dz * incHy_xy2[:,:,it]
-    @views @. Dy[ix1:ix2-1,iy1:iy2-1,iz2] += dt / dz * incHx_xy2[:,:,it]
+    @views @. Hx[ix1:ix2,iy1:iy2-1,iz2] += Cm/dz * incEy_xy2[:,:,it]
+    @views @. Hy[ix1:ix2-1,iy1:iy2,iz2] -= Cm/dz * incEx_xy2[:,:,it]
+    @views @. Ex[ix1:ix2-1,iy1:iy2,iz2] -= Ce/dz * incHy_xy2[:,:,it]
+    @views @. Ey[ix1:ix2,iy1:iy2-1,iz2] += Ce/dz * incHx_xy2[:,:,it]
+    @views @. Dx[ix1:ix2-1,iy1:iy2,iz2] -= EPS0 * Ce/dz * incHy_xy2[:,:,it]
+    @views @. Dy[ix1:ix2,iy1:iy2-1,iz2] += EPS0 * Ce/dz * incHx_xy2[:,:,it]
 
     return nothing
 end
@@ -744,35 +741,35 @@ function prepare_tfsf_record(model::Model3D, tfsf_box, tfsf_fname)
         fp["t"] = collect(t)
         fp["tfsf_box"] = collect(tfsf_box)
         # 1yz:
-        HDF5.create_dataset(fp, "incEz_1yz", T, (Nyi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incEy_1yz", T, (Nyi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHz_1yz", T, (Nyi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHy_1yz", T, (Nyi, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEz_1yz", T, (Nyi+1, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEy_1yz", T, (Nyi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHz_1yz", T, (Nyi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHy_1yz", T, (Nyi+1, Nzi, Nt))
         # 2yz:
-        HDF5.create_dataset(fp, "incEz_2yz", T, (Nyi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incEy_2yz", T, (Nyi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHz_2yz", T, (Nyi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHy_2yz", T, (Nyi, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEz_2yz", T, (Nyi+1, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEy_2yz", T, (Nyi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHz_2yz", T, (Nyi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHy_2yz", T, (Nyi+1, Nzi, Nt))
         # x1z:
-        HDF5.create_dataset(fp, "incEz_x1z", T, (Nxi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incEx_x1z", T, (Nxi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHz_x1z", T, (Nxi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHx_x1z", T, (Nxi, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEz_x1z", T, (Nxi+1, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEx_x1z", T, (Nxi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHz_x1z", T, (Nxi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHx_x1z", T, (Nxi+1, Nzi, Nt))
         # x2z:
-        HDF5.create_dataset(fp, "incEz_x2z", T, (Nxi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incEx_x2z", T, (Nxi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHz_x2z", T, (Nxi, Nzi, Nt))
-        HDF5.create_dataset(fp, "incHx_x2z", T, (Nxi, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEz_x2z", T, (Nxi+1, Nzi, Nt))
+        HDF5.create_dataset(fp, "incEx_x2z", T, (Nxi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHz_x2z", T, (Nxi, Nzi+1, Nt))
+        HDF5.create_dataset(fp, "incHx_x2z", T, (Nxi+1, Nzi, Nt))
         # xy1:
-        HDF5.create_dataset(fp, "incEy_xy1", T, (Nxi, Nyi, Nt))
-        HDF5.create_dataset(fp, "incEx_xy1", T, (Nxi, Nyi, Nt))
-        HDF5.create_dataset(fp, "incHy_xy1", T, (Nxi, Nyi, Nt))
-        HDF5.create_dataset(fp, "incHx_xy1", T, (Nxi, Nyi, Nt))
+        HDF5.create_dataset(fp, "incEy_xy1", T, (Nxi+1, Nyi, Nt))
+        HDF5.create_dataset(fp, "incEx_xy1", T, (Nxi, Nyi+1, Nt))
+        HDF5.create_dataset(fp, "incHy_xy1", T, (Nxi, Nyi+1, Nt))
+        HDF5.create_dataset(fp, "incHx_xy1", T, (Nxi+1, Nyi, Nt))
         # xy2:
-        HDF5.create_dataset(fp, "incEy_xy2", T, (Nxi, Nyi, Nt))
-        HDF5.create_dataset(fp, "incEx_xy2", T, (Nxi, Nyi, Nt))
-        HDF5.create_dataset(fp, "incHy_xy2", T, (Nxi, Nyi, Nt))
-        HDF5.create_dataset(fp, "incHx_xy2", T, (Nxi, Nyi, Nt))
+        HDF5.create_dataset(fp, "incEy_xy2", T, (Nxi+1, Nyi, Nt))
+        HDF5.create_dataset(fp, "incEx_xy2", T, (Nxi, Nyi+1, Nt))
+        HDF5.create_dataset(fp, "incHy_xy2", T, (Nxi, Nyi+1, Nt))
+        HDF5.create_dataset(fp, "incHx_xy2", T, (Nxi+1, Nyi, Nt))
     end
 
     return DataTFSFSource(tfsf_fname, (ix1, ix2, iy1, iy2, iz1, iz2))
@@ -786,35 +783,35 @@ function write_tfsf_record(model::Model3D, tfsf_data, it)
     ix1, ix2, iy1, iy2, iz1, iz2 = tfsf_box
     HDF5.h5open(fname, "r+") do fp
         # 1yz:
-        fp["incEz_1yz"][:,:,it] = collect(Ez[ix1,iy1:iy2-1,iz1:iz2-1])
-        fp["incEy_1yz"][:,:,it] = collect(Ey[ix1,iy1:iy2-1,iz1:iz2-1])
-        fp["incHz_1yz"][:,:,it] = collect(Hz[ix1,iy1:iy2-1,iz1:iz2-1])
-        fp["incHy_1yz"][:,:,it] = collect(Hy[ix1,iy1:iy2-1,iz1:iz2-1])
+        fp["incEz_1yz"][:,:,it] = collect(Ez[ix1,iy1:iy2,iz1:iz2-1])
+        fp["incEy_1yz"][:,:,it] = collect(Ey[ix1,iy1:iy2-1,iz1:iz2])
+        fp["incHz_1yz"][:,:,it] = collect(Hz[ix1-1,iy1:iy2-1,iz1:iz2])
+        fp["incHy_1yz"][:,:,it] = collect(Hy[ix1-1,iy1:iy2,iz1:iz2-1])
         # 2yz:
-        fp["incEz_2yz"][:,:,it] = collect(Ez[ix2,iy1:iy2-1,iz1:iz2-1])
-        fp["incEy_2yz"][:,:,it] = collect(Ey[ix2,iy1:iy2-1,iz1:iz2-1])
-        fp["incHz_2yz"][:,:,it] = collect(Hz[ix2,iy1:iy2-1,iz1:iz2-1])
-        fp["incHy_2yz"][:,:,it] = collect(Hy[ix2,iy1:iy2-1,iz1:iz2-1])
+        fp["incEz_2yz"][:,:,it] = collect(Ez[ix2,iy1:iy2,iz1:iz2-1])
+        fp["incEy_2yz"][:,:,it] = collect(Ey[ix2,iy1:iy2-1,iz1:iz2])
+        fp["incHz_2yz"][:,:,it] = collect(Hz[ix2,iy1:iy2-1,iz1:iz2])
+        fp["incHy_2yz"][:,:,it] = collect(Hy[ix2,iy1:iy2,iz1:iz2-1])
         # x1z:
-        fp["incEz_x1z"][:,:,it] = collect(Ez[ix1:ix2-1,iy1,iz1:iz2-1])
-        fp["incEx_x1z"][:,:,it] = collect(Ex[ix1:ix2-1,iy1,iz1:iz2-1])
-        fp["incHz_x1z"][:,:,it] = collect(Hz[ix1:ix2-1,iy1,iz1:iz2-1])
-        fp["incHx_x1z"][:,:,it] = collect(Hx[ix1:ix2-1,iy1,iz1:iz2-1])
+        fp["incEz_x1z"][:,:,it] = collect(Ez[ix1:ix2,iy1,iz1:iz2-1])
+        fp["incEx_x1z"][:,:,it] = collect(Ex[ix1:ix2-1,iy1,iz1:iz2])
+        fp["incHz_x1z"][:,:,it] = collect(Hz[ix1:ix2-1,iy1-1,iz1:iz2])
+        fp["incHx_x1z"][:,:,it] = collect(Hx[ix1:ix2,iy1-1,iz1:iz2-1])
         # x2z:
-        fp["incEz_x2z"][:,:,it] = collect(Ez[ix1:ix2-1,iy2,iz1:iz2-1])
-        fp["incEx_x2z"][:,:,it] = collect(Ex[ix1:ix2-1,iy2,iz1:iz2-1])
-        fp["incHz_x2z"][:,:,it] = collect(Hz[ix1:ix2-1,iy2,iz1:iz2-1])
-        fp["incHx_x2z"][:,:,it] = collect(Hx[ix1:ix2-1,iy2,iz1:iz2-1])
+        fp["incEz_x2z"][:,:,it] = collect(Ez[ix1:ix2,iy2,iz1:iz2-1])
+        fp["incEx_x2z"][:,:,it] = collect(Ex[ix1:ix2-1,iy2,iz1:iz2])
+        fp["incHz_x2z"][:,:,it] = collect(Hz[ix1:ix2-1,iy2,iz1:iz2])
+        fp["incHx_x2z"][:,:,it] = collect(Hx[ix1:ix2,iy2,iz1:iz2-1])
         # xy1:
-        fp["incEy_xy1"][:,:,it] = collect(Ey[ix1:ix2-1,iy1:iy2-1,iz1])
-        fp["incEx_xy1"][:,:,it] = collect(Ex[ix1:ix2-1,iy1:iy2-1,iz1])
-        fp["incHy_xy1"][:,:,it] = collect(Hy[ix1:ix2-1,iy1:iy2-1,iz1])
-        fp["incHx_xy1"][:,:,it] = collect(Hx[ix1:ix2-1,iy1:iy2-1,iz1])
+        fp["incEy_xy1"][:,:,it] = collect(Ey[ix1:ix2,iy1:iy2-1,iz1])
+        fp["incEx_xy1"][:,:,it] = collect(Ex[ix1:ix2-1,iy1:iy2,iz1])
+        fp["incHy_xy1"][:,:,it] = collect(Hy[ix1:ix2-1,iy1:iy2,iz1-1])
+        fp["incHx_xy1"][:,:,it] = collect(Hx[ix1:ix2,iy1:iy2-1,iz1-1])
         # xy2:
-        fp["incEy_xy2"][:,:,it] = collect(Ey[ix1:ix2-1,iy1:iy2-1,iz2])
-        fp["incEx_xy2"][:,:,it] = collect(Ex[ix1:ix2-1,iy1:iy2-1,iz2])
-        fp["incHy_xy2"][:,:,it] = collect(Hy[ix1:ix2-1,iy1:iy2-1,iz2])
-        fp["incHx_xy2"][:,:,it] = collect(Hx[ix1:ix2-1,iy1:iy2-1,iz2])
+        fp["incEy_xy2"][:,:,it] = collect(Ey[ix1:ix2,iy1:iy2-1,iz2])
+        fp["incEx_xy2"][:,:,it] = collect(Ex[ix1:ix2-1,iy1:iy2,iz2])
+        fp["incHy_xy2"][:,:,it] = collect(Hy[ix1:ix2-1,iy1:iy2,iz2])
+        fp["incHx_xy2"][:,:,it] = collect(Hx[ix1:ix2,iy1:iy2-1,iz2])
     end
     return nothing
 end
