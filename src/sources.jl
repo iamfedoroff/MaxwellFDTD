@@ -262,7 +262,7 @@ function add_source!(model, source::TFSFSource1D, it)
     (; dz) = grid
 
     # 1: z=z1
-    Hy[iz1] += dt / (MU0*dz) * incEx_1[it]
+    Hy[iz1-1] += dt / (MU0*dz) * incEx_1[it]
     Ex[iz1] += dt / (EPS0*dz) * incHy_1[it]
     Dx[iz1] += dt / dz * incHy_1[it]
 
@@ -272,7 +272,7 @@ function add_source!(model, source::TFSFSource1D, it)
     Dx[iz2] -= dt / dz * incHy_2[it]
 
     # (; Mh, Me) = model
-    # Hy[iz1] += Mh[iz1]/dz * incEx_1[it]
+    # Hy[iz1-1] += Mh[iz1]/dz * incEx_1[it]
     # Ex[iz1] += Me[iz1]*dt/dz * incHy_1[it]
     # Dx[iz1] += EPS0 * Me[iz1]*dt/dz * incHy_1[it]
 
@@ -331,8 +331,6 @@ function source_init(data::DataTFSFSource, field::Field2D, t)
     iz1 = argmin(abs.(z .- z1))
     iz2 = argmin(abs.(z .- z2))
 
-    Nxi = ix2 - ix1
-    Nzi = iz2 - iz1
     Nt = length(t)
 
     itp(x,y) = linear_interpolation(x, y; extrapolation_bc=Flat())
@@ -340,38 +338,26 @@ function source_init(data::DataTFSFSource, field::Field2D, t)
     # 1z: x=x1, z in [z1,z2]
     itp_incHy_1z = itp((zex,tex), incHy_1z_ex)
     itp_incEz_1z = itp((zex,tex), incEz_1z_ex)
-    incHy_1z, incEz_1z = zeros(Nzi,Nt), zeros(Nzi,Nt)
-    for it=1:Nt, iz=iz1:iz2-1
-        incHy_1z[iz-iz1+1,it] = itp_incHy_1z(z[iz], t[it])
-        incEz_1z[iz-iz1+1,it] = itp_incEz_1z(z[iz], t[it])
-    end
+    incHy_1z = [itp_incHy_1z(z[iz], t[it]) for iz=iz1:iz2-1, it=1:Nt]
+    incEz_1z = [itp_incEz_1z(z[iz], t[it]) for iz=iz1:iz2-1, it=1:Nt]
 
     # 2z: x=x2, z in [z1,z2]
     itp_incHy_2z = itp((zex,tex), incHy_2z_ex)
     itp_incEz_2z = itp((zex,tex), incEz_2z_ex)
-    incHy_2z, incEz_2z = zeros(Nzi,Nt), zeros(Nzi,Nt)
-    for it=1:Nt, iz=iz1:iz2-1
-        incHy_2z[iz-iz1+1,it] = itp_incHy_2z(z[iz], t[it])
-        incEz_2z[iz-iz1+1,it] = itp_incEz_2z(z[iz], t[it])
-    end
+    incHy_2z = [itp_incHy_2z(z[iz], t[it]) for iz=iz1:iz2-1, it=1:Nt]
+    incEz_2z = [itp_incEz_2z(z[iz], t[it]) for iz=iz1:iz2-1, it=1:Nt]
 
     # x1: x in [x1,x2], z=z1
     itp_incHy_x1 = itp((xex,tex), incHy_x1_ex)
     itp_incEx_x1 = itp((xex,tex), incEx_x1_ex)
-    incHy_x1, incEx_x1 = zeros(Nxi,Nt), zeros(Nxi,Nt)
-    for it=1:Nt, ix=ix1:ix2-1
-        incHy_x1[ix-ix1+1,it] = itp_incHy_x1(x[ix], t[it])
-        incEx_x1[ix-ix1+1,it] = itp_incEx_x1(x[ix], t[it])
-    end
+    incHy_x1 = [itp_incHy_x1(x[ix], t[it]) for ix=ix1:ix2-1, it=1:Nt]
+    incEx_x1 = [itp_incEx_x1(x[ix], t[it]) for ix=ix1:ix2-1, it=1:Nt]
 
     # x2: x in [x1,x2], z=z2
     itp_incHy_x2 = itp((xex,tex), incHy_x2_ex)
     itp_incEx_x2 = itp((xex,tex), incEx_x2_ex)
-    incHy_x2, incEx_x2 = zeros(Nxi,Nt), zeros(Nxi,Nt)
-    for it=1:Nt, ix=ix1:ix2-1
-        incHy_x2[ix-ix1+1,it] = itp_incHy_x2(x[ix], t[it])
-        incEx_x2[ix-ix1+1,it] = itp_incEx_x2(x[ix], t[it])
-    end
+    incHy_x2 = [itp_incHy_x2(x[ix], t[it]) for ix=ix1:ix2-1, it=1:Nt]
+    incEx_x2 = [itp_incEx_x2(x[ix], t[it]) for ix=ix1:ix2-1, it=1:Nt]
 
     return TFSFSource2D(
         ix1, ix2, iz1, iz2,
@@ -389,7 +375,7 @@ function add_source!(model, source::TFSFSource2D, it)
     (; dx, dz) = grid
 
     # 1z: x=x1, z in [z1,z2]
-    @views @. Hy[ix1,iz1:iz2-1] -= dt / (MU0*dx) * incEz_1z[:,it]
+    @views @. Hy[ix1-1,iz1:iz2-1] -= dt / (MU0*dx) * incEz_1z[:,it]
     @views @. Ez[ix1,iz1:iz2-1] -= dt / (EPS0*dx) * incHy_1z[:,it]
     @views @. Dz[ix1,iz1:iz2-1] -= dt / dx * incHy_1z[:,it]
 
@@ -399,7 +385,7 @@ function add_source!(model, source::TFSFSource2D, it)
     @views @. Dz[ix2,iz1:iz2-1] += dt / dx * incHy_2z[:,it]
 
     # x1: x in [x1,x2], z=z1
-    @views @. Hy[ix1:ix2-1,iz1] += dt / (MU0*dz) * incEx_x1[:,it]
+    @views @. Hy[ix1:ix2-1,iz1-1] += dt / (MU0*dz) * incEx_x1[:,it]
     @views @. Ex[ix1:ix2-1,iz1] += dt / (EPS0*dz) * incHy_x1[:,it]
     @views @. Dx[ix1:ix2-1,iz1] += dt / dz * incHy_x1[:,it]
 
@@ -672,7 +658,7 @@ function write_tfsf_record(model::Model1D, tfsf_data, it)
     (; fname, tfsf_box) = tfsf_data
     iz1, iz2 = tfsf_box
     HDF5.h5open(fname, "r+") do fp
-        fp["incHy_1"][it] = collect(Hy[iz1])   # 1: z=z1
+        fp["incHy_1"][it] = collect(Hy[iz1-1])   # 1: z=z1
         fp["incEx_1"][it] = collect(Ex[iz1])
         fp["incHy_2"][it] = collect(Hy[iz2])   # 2: z=z2
         fp["incEx_2"][it] = collect(Ex[iz2])
@@ -724,11 +710,11 @@ function write_tfsf_record(model::Model2D, tfsf_data, it)
     (; fname, tfsf_box) = tfsf_data
     ix1, ix2, iz1, iz2 = tfsf_box
     HDF5.h5open(fname, "r+") do fp
-        fp["incHy_1z"][:,it] = collect(Hy[ix1,iz1:iz2-1])   # 1z: x=x1, z in [z1,z2]
+        fp["incHy_1z"][:,it] = collect(Hy[ix1-1,iz1:iz2-1])   # 1z: x=x1, z in [z1,z2]
         fp["incEz_1z"][:,it] = collect(Ez[ix1,iz1:iz2-1])
         fp["incHy_2z"][:,it] = collect(Hy[ix2,iz1:iz2-1])   # 2z: x=x2, z in [z1,z2]
         fp["incEz_2z"][:,it] = collect(Ez[ix2,iz1:iz2-1])
-        fp["incHy_x1"][:,it] = collect(Hy[ix1:ix2-1,iz1])   # x1: x in [x1,x2], z=z1
+        fp["incHy_x1"][:,it] = collect(Hy[ix1:ix2-1,iz1-1])   # x1: x in [x1,x2], z=z1
         fp["incEx_x1"][:,it] = collect(Ex[ix1:ix2-1,iz1])
         fp["incHy_x2"][:,it] = collect(Hy[ix1:ix2-1,iz2])   # x2: x in [x1,x2], z=z2
         fp["incEx_x2"][:,it] = collect(Ex[ix1:ix2-1,iz2])
