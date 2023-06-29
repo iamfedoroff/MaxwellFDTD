@@ -14,7 +14,7 @@ function solve!(
     tfsf_record=false, tfsf_box=nothing, tfsf_fname=nothing,
 )
     model = adapt(arch, model)
-    (; Nt, t) = model
+    (; Nt, dt, t) = model
 
     if isnothing(fname)
         fname = default_fname(model)
@@ -42,7 +42,7 @@ function solve!(
         end
 
         @timeit "output" begin
-            if (out.itout <= out.Ntout) && (t[it] == out.tout[out.itout])
+            if (out.itout <= out.Ntout) && (abs(t[it] - out.tout[out.itout]) < dt/2)
                 write_output!(out, model)
                 out.itout += 1
             end
