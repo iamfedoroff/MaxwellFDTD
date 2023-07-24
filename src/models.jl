@@ -174,7 +174,7 @@ end
 
 @kernel function update_H_kernel!(model::Model1D)
     (; field, pml, Mh) = model
-    (; Kz, Az, Bz, psiExz) = pml
+    (; iz1, iz2, Kz, Az, Bz, psiExz) = pml
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
 
@@ -185,11 +185,14 @@ end
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
         dExz = (Ex[izp1] - Ex[iz]) / dz
 
-        # update CPML E:
-        psiExz[iz] = Bz[iz] * psiExz[iz] + Az[iz] * dExz
+        # apply CPML:
+        if (iz <= iz1) || (iz >= iz2)
+            psiExz[iz] = Bz[iz] * psiExz[iz] + Az[iz] * dExz
+            Hy[iz] -= Mh[iz] * (0 + psiExz[iz])
+        end
 
         # update H:
-        Hy[iz] = Hy[iz] - Mh[iz] * ((0 + dExz / Kz[iz]) + (0 + psiExz[iz]))
+        Hy[iz] -= Mh[iz] * (0 + dExz / Kz[iz])
     end
 end
 function update_H!(model::Model1D)
@@ -204,7 +207,7 @@ end
 @kernel function update_E_kernel!(model::Model1D)
     (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
-    (; Kz, Az, Bz, psiHyz) = pml
+    (; iz1, iz2, Kz, Az, Bz, psiHyz) = pml
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
 
@@ -215,11 +218,14 @@ end
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
         dHyz = (Hy[iz] - Hy[izm1]) / dz
 
-        # update CPML H:
-        psiHyz[iz] = Bz[iz] * psiHyz[iz] + Az[iz] * dHyz
+        # apply CPML:
+        if (iz <= iz1) || (iz >= iz2)
+            psiHyz[iz] = Bz[iz] * psiHyz[iz] + Az[iz] * dHyz
+            Dx[iz] += Md2[iz] * (0 - psiHyz[iz])
+        end
 
         # update D:
-        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
+        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz / Kz[iz])
 
         # update P:
         Nq = size(Px, 1)
@@ -349,7 +355,7 @@ end
 
 @kernel function update_H_kernel!(model::Model2D)
     (; field, pml, Mh) = model
-    (; Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx) = pml
+    (; ix1, ix2, iz1, iz2, Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx) = pml
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -362,14 +368,19 @@ end
         dExz = (Ex[ix,izp1] - Ex[ix,iz]) / dz
         dEzx = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
 
-        # update CPML E:
-        psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz
-        psiEzx[ix,iz] = Bx[ix] * psiEzx[ix,iz] + Ax[ix] * dEzx
+        # apply CPML:
+        if (ix <= ix1) || (ix >= ix2)
+            psiEzx[ix,iz] = Bx[ix] * psiEzx[ix,iz] + Ax[ix] * dEzx
+            Hy[ix,iz] += Mh[ix,iz] * psiEzx[ix,iz]
+        end
+        if (iz <= iz1) || (iz >= iz2)
+            psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz
+            Hy[ix,iz] -= Mh[ix,iz] * psiExz[ix,iz]
+
+        end
 
         # update H:
-        Hy[ix,iz] = Hy[ix,iz] - Mh[ix,iz] * (
-            (dExz / Kz[iz] - dEzx / Kx[ix]) + (psiExz[ix,iz] - psiEzx[ix,iz])
-        )
+        Hy[ix,iz] -= Mh[ix,iz] * (dExz / Kz[iz] - dEzx / Kx[ix])
     end
 end
 function update_H!(model::Model2D)
@@ -384,7 +395,7 @@ end
 @kernel function update_E_kernel!(model::Model2D)
     (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; Kx, Ax, Bx, Kz, Az, Bz, psiHyx, psiHyz) = pml
+    (; ix1, ix2, iz1, iz2, Kx, Ax, Bx, Kz, Az, Bz, psiHyx, psiHyz) = pml
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -397,15 +408,19 @@ end
         dHyx = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
         dHyz = (Hy[ix,iz] - Hy[ix,izm1]) / dz
 
-        # update CPML H:
-        psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx
-        psiHyz[ix,iz] = Bz[iz] * psiHyz[ix,iz] + Az[iz] * dHyz
+        # apply CPML:
+        if (ix <= ix1) || (ix >= ix2)
+            psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx
+            Dz[ix,iz] += Md2[ix,iz] * psiHyx[ix,iz]
+        end
+        if (iz <= iz1) || (iz >= iz2)
+            psiHyz[ix,iz] = Bz[iz] * psiHyz[ix,iz] + Az[iz] * dHyz
+            Dx[ix,iz] -= Md2[ix,iz] * psiHyz[ix,iz]
+        end
 
         # update D:
-        Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] +
-                    Md2[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
-        Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] +
-                    Md2[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
+        Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] + Md2[ix,iz] * (0 - dHyz / Kz[iz])
+        Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx / Kx[ix] - 0)
 
         # update P:
         Nq = size(Px, 1)
@@ -548,7 +563,7 @@ end
 
 @kernel function update_H_kernel!(model::Model3D)
     (; field, pml, Mh) = model
-    (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
+    (; ix1, ix2, iy1, iy2, iz1, iz2, Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
     (; psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy) = pml
     (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
@@ -567,24 +582,30 @@ end
         dEzx = (Ez[ixp1,iy,iz] - Ez[ix,iy,iz]) / dx
         dEzy = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
 
-        # update CPML E:
-        psiExy[ix,iy,iz] = By[iy] * psiExy[ix,iy,iz] + Ay[iy] * dExy
-        psiExz[ix,iy,iz] = Bz[iz] * psiExz[ix,iy,iz] + Az[iz] * dExz
-        psiEyx[ix,iy,iz] = Bx[ix] * psiEyx[ix,iy,iz] + Ax[ix] * dEyx
-        psiEyz[ix,iy,iz] = Bz[iz] * psiEyz[ix,iy,iz] + Az[iz] * dEyz
-        psiEzx[ix,iy,iz] = Bx[ix] * psiEzx[ix,iy,iz] + Ax[ix] * dEzx
-        psiEzy[ix,iy,iz] = By[iy] * psiEzy[ix,iy,iz] + Ay[iy] * dEzy
+        # apply CPML:
+        if (ix <= ix1) || (ix >= ix2)
+            psiEyx[ix,iy,iz] = Bx[ix] * psiEyx[ix,iy,iz] + Ax[ix] * dEyx
+            psiEzx[ix,iy,iz] = Bx[ix] * psiEzx[ix,iy,iz] + Ax[ix] * dEzx
+            Hy[ix,iy,iz] += Mh[ix,iy,iz] * psiEzx[ix,iy,iz]
+            Hz[ix,iy,iz] -= Mh[ix,iy,iz] * psiEyx[ix,iy,iz]
+        end
+        if (iy <= iy1) || (iy >= iy2)
+            psiExy[ix,iy,iz] = By[iy] * psiExy[ix,iy,iz] + Ay[iy] * dExy
+            psiEzy[ix,iy,iz] = By[iy] * psiEzy[ix,iy,iz] + Ay[iy] * dEzy
+            Hx[ix,iy,iz] -= Mh[ix,iy,iz] * psiEzy[ix,iy,iz]
+            Hz[ix,iy,iz] += Mh[ix,iy,iz] * psiExy[ix,iy,iz]
+        end
+        if (iz <= iz1) || (iz >= iz2)
+            psiExz[ix,iy,iz] = Bz[iz] * psiExz[ix,iy,iz] + Az[iz] * dExz
+            psiEyz[ix,iy,iz] = Bz[iz] * psiEyz[ix,iy,iz] + Az[iz] * dEyz
+            Hx[ix,iy,iz] += Mh[ix,iy,iz] * psiEyz[ix,iy,iz]
+            Hy[ix,iy,iz] -= Mh[ix,iy,iz] * psiExz[ix,iy,iz]
+        end
 
         # update H:
-        Hx[ix,iy,iz] = Hx[ix,iy,iz] - Mh[ix,iy,iz] * (
-            (dEzy / Ky[iy] - dEyz / Kz[iz]) + (psiEzy[ix,iy,iz] - psiEyz[ix,iy,iz])
-        )
-        Hy[ix,iy,iz] = Hy[ix,iy,iz] - Mh[ix,iy,iz] * (
-            (dExz / Kz[iz] - dEzx / Kx[ix]) + (psiExz[ix,iy,iz] - psiEzx[ix,iy,iz])
-        )
-        Hz[ix,iy,iz] = Hz[ix,iy,iz] - Mh[ix,iy,iz] * (
-            (dEyx / Kx[ix] - dExy / Ky[iy]) + (psiEyx[ix,iy,iz] - psiExy[ix,iy,iz])
-        )
+        Hx[ix,iy,iz] -= Mh[ix,iy,iz] * (dEzy / Ky[iy] - dEyz / Kz[iz])
+        Hy[ix,iy,iz] -= Mh[ix,iy,iz] * (dExz / Kz[iz] - dEzx / Kx[ix])
+        Hz[ix,iy,iz] -= Mh[ix,iy,iz] * (dEyx / Kx[ix] - dExy / Ky[iy])
     end
 end
 function update_H!(model::Model3D)
@@ -599,7 +620,7 @@ end
 @kernel function update_E_kernel!(model::Model3D)
     (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
-    (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
+    (; ix1, ix2, iy1, iy2, iz1, iz2, Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
     (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = pml
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
@@ -618,30 +639,33 @@ end
         dHzx = (Hz[ix,iy,iz] - Hz[ixm1,iy,iz]) / dx
         dHzy = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
 
-        # update CPML H:
-        psiHxy[ix,iy,iz] = By[iy] * psiHxy[ix,iy,iz] + Ay[iy] * dHxy
-        psiHxz[ix,iy,iz] = Bz[iz] * psiHxz[ix,iy,iz] + Az[iz] * dHxz
-        psiHyx[ix,iy,iz] = Bx[ix] * psiHyx[ix,iy,iz] + Ax[ix] * dHyx
-        psiHyz[ix,iy,iz] = Bz[iz] * psiHyz[ix,iy,iz] + Az[iz] * dHyz
-        psiHzx[ix,iy,iz] = Bx[ix] * psiHzx[ix,iy,iz] + Ax[ix] * dHzx
-        psiHzy[ix,iy,iz] = By[iy] * psiHzy[ix,iy,iz] + Ay[iy] * dHzy
+        # apply CPML:
+        if (ix <= ix1) || (ix >= ix2)
+            psiHyx[ix,iy,iz] = Bx[ix] * psiHyx[ix,iy,iz] + Ax[ix] * dHyx
+            psiHzx[ix,iy,iz] = Bx[ix] * psiHzx[ix,iy,iz] + Ax[ix] * dHzx
+            Dy[ix,iy,iz] -= Md2[ix,iy,iz] * psiHzx[ix,iy,iz]
+            Dz[ix,iy,iz] += Md2[ix,iy,iz] * psiHyx[ix,iy,iz]
+        end
+        if (iy <= iy1) || (iy >= iy2)
+            psiHxy[ix,iy,iz] = By[iy] * psiHxy[ix,iy,iz] + Ay[iy] * dHxy
+            psiHzy[ix,iy,iz] = By[iy] * psiHzy[ix,iy,iz] + Ay[iy] * dHzy
+            Dx[ix,iy,iz] += Md2[ix,iy,iz] * psiHzy[ix,iy,iz]
+            Dz[ix,iy,iz] -= Md2[ix,iy,iz] * psiHxy[ix,iy,iz]
+        end
+        if (iz <= iz1) || (iz >= iz2)
+            psiHxz[ix,iy,iz] = Bz[iz] * psiHxz[ix,iy,iz] + Az[iz] * dHxz
+            psiHyz[ix,iy,iz] = Bz[iz] * psiHyz[ix,iy,iz] + Az[iz] * dHyz
+            Dx[ix,iy,iz] -= Md2[ix,iy,iz] * psiHyz[ix,iy,iz]
+            Dy[ix,iy,iz] += Md2[ix,iy,iz] * psiHxz[ix,iy,iz]
+        end
 
         # update D:
         Dx[ix,iy,iz] = Md1[ix,iy,iz] * Dx[ix,iy,iz] +
-                       Md2[ix,iy,iz] * (
-                           (dHzy / Ky[iy] - dHyz / Kz[iz]) +
-                           (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz])
-                       )
+                       Md2[ix,iy,iz] * (dHzy / Ky[iy] - dHyz / Kz[iz])
         Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] +
-                       Md2[ix,iy,iz] * (
-                          (dHxz / Kz[iz] - dHzx / Kx[ix]) +
-                          (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz])
-                       )
+                       Md2[ix,iy,iz] * (dHxz / Kz[iz] - dHzx / Kx[ix])
         Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] +
-                       Md2[ix,iy,iz] * (
-                          (dHyx / Kx[ix] - dHxy / Ky[iy]) +
-                          (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz])
-                       )
+                       Md2[ix,iy,iz] * (dHyx / Kx[ix] - dHxy / Ky[iy])
 
         # update P:
         Nq = size(Px, 1)
