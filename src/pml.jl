@@ -1,4 +1,102 @@
-function pml(x, box, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
+# ******************************************************************************************
+# 1D
+# ******************************************************************************************
+struct PML1D{A}
+    Kz :: A
+    Az :: A
+    Bz :: A
+    psiExz :: A
+    psiHyz :: A
+end
+
+@adapt_structure PML1D
+
+
+function PML(z, box, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
+    Nz = length(z)
+    Kz, Az, Bz = pml_coefficients(z, box, dt; kappa, alpha, R0, m)
+    psiExz, psiHyz = zeros(Nz), zeros(Nz)
+    return PML1D(Kz, Az, Bz, psiExz, psiHyz)
+end
+
+
+# ******************************************************************************************
+# 2D
+# ******************************************************************************************
+struct PML2D{V, A}
+    Kx :: V
+    Ax :: V
+    Bx :: V
+    Kz :: V
+    Az :: V
+    Bz :: V
+    psiExz :: A
+    psiEzx :: A
+    psiHyx :: A
+    psiHyz :: A
+end
+
+@adapt_structure PML2D
+
+
+function PML(x, z, box, dt)
+    Nx, Nz = length(x), length(z)
+    Kx, Ax, Bx = pml_coefficients(x, box[1:2], dt)
+    Kz, Az, Bz = pml_coefficients(z, box[3:4], dt)
+    psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
+    return PML2D(Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx, psiHyx, psiHyz)
+end
+
+
+# ******************************************************************************************
+# 3D
+# ******************************************************************************************
+struct PML3D{V, A}
+    Kx :: V
+    Ax :: V
+    Bx :: V
+    Ky :: V
+    Ay :: V
+    By :: V
+    Kz :: V
+    Az :: V
+    Bz :: V
+    psiExy :: A
+    psiExz :: A
+    psiEyx :: A
+    psiEyz :: A
+    psiEzx :: A
+    psiEzy :: A
+    psiHxy :: A
+    psiHxz :: A
+    psiHyx :: A
+    psiHyz :: A
+    psiHzx :: A
+    psiHzy :: A
+end
+
+@adapt_structure PML3D
+
+
+function PML(x, y, z, box, dt)
+    Nx, Ny, Nz = length(x), length(y), length(z)
+    Kx, Ax, Bx = pml_coefficients(x, box[1:2], dt)
+    Ky, Ay, By = pml_coefficients(y, box[3:4], dt)
+    Kz, Az, Bz = pml_coefficients(z, box[5:6], dt)
+    psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
+    psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
+    return PML3D(
+        Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
+        psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
+        psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
+    )
+end
+
+
+# ******************************************************************************************
+# Util
+# ******************************************************************************************
+function pml_coefficients(x, box, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
     Lx1, Lx2 = box
     Nx = length(x)
     xmin, xmax = x[1], x[end]

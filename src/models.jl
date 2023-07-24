@@ -72,9 +72,10 @@ end
 # ******************************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
-struct Model1D{F, S, T, R, A, AP}
+struct Model1D{F, S, P, T, R, A, AP}
     field :: F
     source :: S
+    pml :: P
     # Time grid:
     Nt :: Int
     dt :: T
@@ -91,12 +92,6 @@ struct Model1D{F, S, T, R, A, AP}
     Px :: AP
     oldPx1 :: AP
     oldPx2 :: AP
-    # CPML variables:
-    Kz :: A
-    Az :: A
-    Bz :: A
-    psiExz :: A
-    psiHyz :: A
 end
 
 @adapt_structure Model1D
@@ -116,6 +111,8 @@ function Model(
     t = range(0, tmax, Nt)
 
     source = source_init(source_data, field, t)
+
+    pml = PML(z, pml_box, dt)
 
     # Material processing:
     if isnothing(material)
@@ -168,19 +165,16 @@ function Model(
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    # CPML variables:
-    Kz, Az, Bz = pml(z, pml_box, dt)
-    psiExz, psiHyz = zeros(Nz), zeros(Nz)
-
     return Model1D(
-        field, source, Nt, dt, t, Mh, Me, Md1, Md2,
-        Aq, Bq, Cq, Px, oldPx1, oldPx2, Kz, Az, Bz, psiExz, psiHyz,
+        field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
+        Aq, Bq, Cq, Px, oldPx1, oldPx2,
     )
 end
 
 
 @kernel function update_H_kernel!(model::Model1D)
-    (; field, Mh, Kz, Az, Bz, psiExz) = model
+    (; field, pml, Mh) = model
+    (; Kz, Az, Bz, psiExz) = pml
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
 
@@ -208,8 +202,9 @@ end
 
 
 @kernel function update_E_kernel!(model::Model1D)
-    (; field, Me, Md1, Md2, Kz, Az, Bz, psiHyz) = model
+    (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
+    (; Kz, Az, Bz, psiHyz) = pml
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
 
@@ -256,20 +251,13 @@ function update_E!(model::Model1D)
 end
 
 
-function update_E_explicit!(model::Model1D)
-    (; field, dt, Me, Kz, psiHyz) = model
-    (; Ex, dHyz) = field
-    @. Ex = Ex + dt * Me * ((0 - dHyz/Kz) + (0 - psiHyz))
-    return nothing
-end
-
-
 # ******************************************************************************************
 # 2D
 # ******************************************************************************************
-struct Model2D{F, S, T, R, A, AP, V}
+struct Model2D{F, S, P, T, R, A, AP}
     field :: F
     source :: S
+    pml :: P
     # Time grid:
     Nt :: Int
     dt :: T
@@ -289,17 +277,6 @@ struct Model2D{F, S, T, R, A, AP, V}
     Pz :: AP
     oldPz1 :: AP
     oldPz2 :: AP
-    # CPML variables:
-    Kx :: V
-    Ax :: V
-    Bx :: V
-    Kz :: V
-    Az :: V
-    Bz :: V
-    psiExz :: A
-    psiEzx :: A
-    psiHyx :: A
-    psiHyz :: A
 end
 
 @adapt_structure Model2D
@@ -319,6 +296,8 @@ function Model(
     t = range(0, tmax, Nt)
 
     source = source_init(source_data, field, t)
+
+    pml = PML(x, z, pml_box, dt)
 
     # Material processing:
     if isnothing(material)
@@ -361,22 +340,16 @@ function Model(
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    # CPML variables:
-    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
-    Kz, Az, Bz = pml(z, pml_box[3:4], dt)
-    psiExz, psiEzx, psiHyx, psiHyz = (zeros(Nx,Nz) for i=1:4)
-
     return Model2D(
-        field, source, Nt, dt, t, Mh, Me, Md1, Md2,
+        field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-        Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx, psiHyx, psiHyz,
     )
 end
 
 
 @kernel function update_H_kernel!(model::Model2D)
-    (; field, Mh) = model
-    (; Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx) = model
+    (; field, pml, Mh) = model
+    (; Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx) = pml
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -409,9 +382,9 @@ end
 
 
 @kernel function update_E_kernel!(model::Model2D)
-    (; field, Me, Md1, Md2) = model
-    (; Kx, Ax, Bx, Kz, Az, Bz, psiHyx, psiHyz) = model
+    (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; Kx, Ax, Bx, Kz, Az, Bz, psiHyx, psiHyz) = pml
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -476,9 +449,10 @@ end
 # ******************************************************************************************
 # 3D
 # ******************************************************************************************
-struct Model3D{F, S, T, R, A, AP, V}
+struct Model3D{F, S, P, T, R, A, AP}
     field :: F
     source :: S
+    pml :: P
     # Time grid:
     Nt :: Int
     dt :: T
@@ -501,28 +475,6 @@ struct Model3D{F, S, T, R, A, AP, V}
     Pz :: AP
     oldPz1 :: AP
     oldPz2 :: AP
-    # CPML variables:
-    Kx :: V
-    Ax :: V
-    Bx :: V
-    Ky :: V
-    Ay :: V
-    By :: V
-    Kz :: V
-    Az :: V
-    Bz :: V
-    psiExy :: A
-    psiExz :: A
-    psiEyx :: A
-    psiEyz :: A
-    psiEzx :: A
-    psiEzy :: A
-    psiHxy :: A
-    psiHxz :: A
-    psiHyx :: A
-    psiHyz :: A
-    psiHzx :: A
-    psiHzy :: A
 end
 
 @adapt_structure Model3D
@@ -542,6 +494,8 @@ function Model(
     t = range(0, tmax, Nt)
 
     source = source_init(source_data, field, t)
+
+    pml = PML(x, y, z, pml_box, dt)
 
     # Material processing:
     if isnothing(material)
@@ -585,27 +539,17 @@ function Model(
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    # CPML variables:
-    Kx, Ax, Bx = pml(x, pml_box[1:2], dt)
-    Ky, Ay, By = pml(y, pml_box[3:4], dt)
-    Kz, Az, Bz = pml(z, pml_box[5:6], dt)
-    psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy = (zeros(Nx,Ny,Nz) for i=1:6)
-    psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy = (zeros(Nx,Ny,Nz) for i=1:6)
-
     return Model3D(
-        field, source, Nt, dt, t, Mh, Me, Md1, Md2,
+        field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
         Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-        Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz,
-        psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy,
-        psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy,
     )
 end
 
 
 @kernel function update_H_kernel!(model::Model3D)
-    (; field, Mh) = model
-    (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = model
-    (; psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy) = model
+    (; field, pml, Mh) = model
+    (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
+    (; psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy) = pml
     (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
@@ -653,10 +597,10 @@ end
 
 
 @kernel function update_E_kernel!(model::Model3D)
-    (; field, Me, Md1, Md2) = model
-    (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = model
-    (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = model
+    (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
+    (; Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
+    (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = pml
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
