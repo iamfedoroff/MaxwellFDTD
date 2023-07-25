@@ -174,7 +174,7 @@ end
 
 @kernel function update_H_kernel!(model::Model1D)
     (; field, pml, Mh) = model
-    (; iz1, iz2, Kz, Az, Bz, psiExz) = pml
+    (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
 
@@ -186,13 +186,23 @@ end
         dExz = (Ex[izp1] - Ex[iz]) / dz
 
         # apply CPML:
-        if (iz <= iz1) || (iz >= iz2)
-            psiExz[iz] = Bz[iz] * psiExz[iz] + Az[iz] * dExz
-            Hy[iz] -= Mh[iz] * (0 + psiExz[iz])
+        if iz <= zlayer1.ind   # z left layer [1:iz1]
+            (; K, A, B) = zlayer1
+            izpml = iz
+            psiExz1[izpml] = B[izpml] * psiExz1[izpml] + A[izpml] * dExz
+            Hy[iz] -= Mh[iz] * psiExz1[izpml]
+            dExz = dExz / K[izpml]
+        end
+        if iz >= zlayer2.ind   # z right layer [iz1:Nz]
+            (; ind, K, A, B) = zlayer2
+            izpml = iz - ind + 1
+            psiExz2[izpml] = B[izpml] * psiExz2[izpml] + A[izpml] * dExz
+            Hy[iz] -= Mh[iz] * psiExz2[izpml]
+            dExz = dExz / K[izpml]
         end
 
         # update H:
-        Hy[iz] -= Mh[iz] * (0 + dExz / Kz[iz])
+        Hy[iz] -= Mh[iz] * (0 + dExz)
     end
 end
 function update_H!(model::Model1D)
@@ -207,7 +217,7 @@ end
 @kernel function update_E_kernel!(model::Model1D)
     (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
-    (; iz1, iz2, Kz, Az, Bz, psiHyz) = pml
+    (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
 
@@ -219,13 +229,23 @@ end
         dHyz = (Hy[iz] - Hy[izm1]) / dz
 
         # apply CPML:
-        if (iz <= iz1) || (iz >= iz2)
-            psiHyz[iz] = Bz[iz] * psiHyz[iz] + Az[iz] * dHyz
-            Dx[iz] += Md2[iz] * (0 - psiHyz[iz])
+        if iz <= zlayer1.ind   # z left layer [1:iz1]
+            (; K, A, B) = zlayer1
+            izpml = iz
+            psiHyz1[izpml] = B[izpml] * psiHyz1[izpml] + A[izpml] * dHyz
+            Dx[iz] -= Md2[iz] * psiHyz1[izpml]
+            dHyz = dHyz / K[izpml]
+        end
+        if iz >= zlayer2.ind   # z right layer [iz1:Nz]
+            (; ind, K, A, B) = zlayer2
+            izpml = iz - ind + 1
+            psiHyz2[izpml] = B[izpml] * psiHyz2[izpml] + A[izpml] * dHyz
+            Dx[iz] -= Md2[iz] * psiHyz2[izpml]
+            dHyz = dHyz / K[izpml]
         end
 
         # update D:
-        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz / Kz[iz])
+        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz)
 
         # update P:
         Nq = size(Px, 1)
@@ -355,7 +375,7 @@ end
 
 @kernel function update_H_kernel!(model::Model2D)
     (; field, pml, Mh) = model
-    (; ix1, ix2, iz1, iz2, Kx, Ax, Bx, Kz, Az, Bz, psiExz, psiEzx) = pml
+    (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -369,18 +389,37 @@ end
         dEzx = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
 
         # apply CPML:
-        if (ix <= ix1) || (ix >= ix2)
-            psiEzx[ix,iz] = Bx[ix] * psiEzx[ix,iz] + Ax[ix] * dEzx
-            Hy[ix,iz] += Mh[ix,iz] * psiEzx[ix,iz]
+        if ix <= xlayer1.ind   # x left layer [1:ix1]
+            (; K, A, B) = xlayer1
+            ixpml = ix
+            psiEzx1[ixpml,iz] = B[ixpml] * psiEzx1[ixpml,iz] + A[ixpml] * dEzx
+            Hy[ix,iz] += Mh[ix,iz] * psiEzx1[ixpml,iz]
+            dEzx = dEzx / K[ixpml]
         end
-        if (iz <= iz1) || (iz >= iz2)
-            psiExz[ix,iz] = Bz[iz] * psiExz[ix,iz] + Az[iz] * dExz
-            Hy[ix,iz] -= Mh[ix,iz] * psiExz[ix,iz]
-
+        if ix >= xlayer2.ind      # x right layer [ix2:Nx]
+            (; ind, K, A, B) = xlayer2
+            ixpml = ix - ind + 1
+            psiEzx2[ixpml,iz] = B[ixpml] * psiEzx2[ixpml,iz] + A[ixpml] * dEzx
+            Hy[ix,iz] += Mh[ix,iz] * psiEzx2[ixpml,iz]
+            dEzx = dEzx / K[ixpml]
+        end
+        if iz <= zlayer1.ind   # z left layer [1:iz1]
+            (; K, A, B) = zlayer1
+            izpml = iz
+            psiExz1[ix,izpml] = B[izpml] * psiExz1[ix,izpml] + A[izpml] * dExz
+            Hy[ix,iz] -= Mh[ix,iz] * psiExz1[ix,izpml]
+            dExz = dExz / K[izpml]
+        end
+        if iz >= zlayer2.ind      # z right layer [iz1:Nz]
+            (; ind, K, A, B) = zlayer2
+            izpml = iz - ind + 1
+            psiExz2[ix,izpml] = B[izpml] * psiExz2[ix,izpml] + A[izpml] * dExz
+            Hy[ix,iz] -= Mh[ix,iz] * psiExz2[ix,izpml]
+            dExz = dExz / K[izpml]
         end
 
         # update H:
-        Hy[ix,iz] -= Mh[ix,iz] * (dExz / Kz[iz] - dEzx / Kx[ix])
+        Hy[ix,iz] -= Mh[ix,iz] * (dExz - dEzx)
     end
 end
 function update_H!(model::Model2D)
@@ -395,7 +434,7 @@ end
 @kernel function update_E_kernel!(model::Model2D)
     (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
-    (; ix1, ix2, iz1, iz2, Kx, Ax, Bx, Kz, Az, Bz, psiHyx, psiHyz) = pml
+    (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -409,18 +448,38 @@ end
         dHyz = (Hy[ix,iz] - Hy[ix,izm1]) / dz
 
         # apply CPML:
-        if (ix <= ix1) || (ix >= ix2)
-            psiHyx[ix,iz] = Bx[ix] * psiHyx[ix,iz] + Ax[ix] * dHyx
-            Dz[ix,iz] += Md2[ix,iz] * psiHyx[ix,iz]
+        if ix <= xlayer1.ind   # x left layer [1:ix1]
+            (; K, A, B) = xlayer1
+            ixpml = ix
+            psiHyx1[ixpml,iz] = B[ixpml] * psiHyx1[ixpml,iz] + A[ixpml] * dHyx
+            Dz[ix,iz] += Md2[ix,iz] * psiHyx1[ixpml,iz]
+            dHyx = dHyx / K[ixpml]
         end
-        if (iz <= iz1) || (iz >= iz2)
-            psiHyz[ix,iz] = Bz[iz] * psiHyz[ix,iz] + Az[iz] * dHyz
-            Dx[ix,iz] -= Md2[ix,iz] * psiHyz[ix,iz]
+        if ix >= xlayer2.ind   # x right layer [ix2:Nx]
+            (; ind, K, A, B) = xlayer2
+            ixpml = ix - ind + 1
+            psiHyx2[ixpml,iz] = B[ixpml] * psiHyx2[ixpml,iz] + A[ixpml] * dHyx
+            Dz[ix,iz] += Md2[ix,iz] * psiHyx2[ixpml,iz]
+            dHyx = dHyx / K[ixpml]
+        end
+        if iz <= zlayer1.ind   # z left layer [1:iz1]
+            (; K, A, B) = zlayer1
+            izpml = iz
+            psiHyz1[ix,izpml] = B[izpml] * psiHyz1[ix,izpml] + A[izpml] * dHyz
+            Dx[ix,iz] -= Md2[ix,iz] * psiHyz1[ix,izpml]
+            dHyz = dHyz / K[izpml]
+        end
+        if iz >= zlayer2.ind   # z right layer [iz2:Nz]
+            (; ind, K, A, B) = zlayer2
+            izpml = iz - ind + 1
+            psiHyz2[ix,izpml] = B[izpml] * psiHyz2[ix,izpml] + A[izpml] * dHyz
+            Dx[ix,iz] -= Md2[ix,iz] * psiHyz2[ix,izpml]
+            dHyz = dHyz / K[izpml]
         end
 
         # update D:
-        Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] + Md2[ix,iz] * (0 - dHyz / Kz[iz])
-        Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx / Kx[ix] - 0)
+        Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] + Md2[ix,iz] * (0 - dHyz)
+        Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx - 0)
 
         # update P:
         Nq = size(Px, 1)
@@ -563,8 +622,9 @@ end
 
 @kernel function update_H_kernel!(model::Model3D)
     (; field, pml, Mh) = model
-    (; ix1, ix2, iy1, iy2, iz1, iz2, Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
-    (; psiExy, psiExz, psiEyx, psiEyz, psiEzx, psiEzy) = pml
+    (; xlayer1, psiEyx1, psiEzx1, xlayer2, psiEyx2, psiEzx2,
+       ylayer1, psiExy1, psiEzy1, ylayer2, psiExy2, psiEzy2,
+       zlayer1, psiExz1, psiEyz1, zlayer2, psiExz2, psiEyz2) = pml
     (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
@@ -583,29 +643,71 @@ end
         dEzy = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
 
         # apply CPML:
-        if (ix <= ix1) || (ix >= ix2)
-            psiEyx[ix,iy,iz] = Bx[ix] * psiEyx[ix,iy,iz] + Ax[ix] * dEyx
-            psiEzx[ix,iy,iz] = Bx[ix] * psiEzx[ix,iy,iz] + Ax[ix] * dEzx
-            Hy[ix,iy,iz] += Mh[ix,iy,iz] * psiEzx[ix,iy,iz]
-            Hz[ix,iy,iz] -= Mh[ix,iy,iz] * psiEyx[ix,iy,iz]
+        if ix <= xlayer1.ind   # x left layer [1:ix1]
+            (; K, A, B) = xlayer1
+            ixpml = ix
+            psiEyx1[ixpml,iy,iz] = B[ixpml] * psiEyx1[ixpml,iy,iz] + A[ixpml] * dEyx
+            psiEzx1[ixpml,iy,iz] = B[ixpml] * psiEzx1[ixpml,iy,iz] + A[ixpml] * dEzx
+            Hy[ix,iy,iz] += Mh[ix,iy,iz] * psiEzx1[ixpml,iy,iz]
+            Hz[ix,iy,iz] -= Mh[ix,iy,iz] * psiEyx1[ixpml,iy,iz]
+            dEyx = dEyx / K[ixpml]
+            dEzx = dEzx / K[ixpml]
         end
-        if (iy <= iy1) || (iy >= iy2)
-            psiExy[ix,iy,iz] = By[iy] * psiExy[ix,iy,iz] + Ay[iy] * dExy
-            psiEzy[ix,iy,iz] = By[iy] * psiEzy[ix,iy,iz] + Ay[iy] * dEzy
-            Hx[ix,iy,iz] -= Mh[ix,iy,iz] * psiEzy[ix,iy,iz]
-            Hz[ix,iy,iz] += Mh[ix,iy,iz] * psiExy[ix,iy,iz]
+        if ix >= xlayer2.ind   # x right layer [ix2:Nx]
+            (; ind, K, A, B) = xlayer2
+            ixpml = ix - ind + 1
+            psiEyx2[ixpml,iy,iz] = B[ixpml] * psiEyx2[ixpml,iy,iz] + A[ixpml] * dEyx
+            psiEzx2[ixpml,iy,iz] = B[ixpml] * psiEzx2[ixpml,iy,iz] + A[ixpml] * dEzx
+            Hy[ix,iy,iz] += Mh[ix,iy,iz] * psiEzx2[ixpml,iy,iz]
+            Hz[ix,iy,iz] -= Mh[ix,iy,iz] * psiEyx2[ixpml,iy,iz]
+            dEyx = dEyx / K[ixpml]
+            dEzx = dEzx / K[ixpml]
         end
-        if (iz <= iz1) || (iz >= iz2)
-            psiExz[ix,iy,iz] = Bz[iz] * psiExz[ix,iy,iz] + Az[iz] * dExz
-            psiEyz[ix,iy,iz] = Bz[iz] * psiEyz[ix,iy,iz] + Az[iz] * dEyz
-            Hx[ix,iy,iz] += Mh[ix,iy,iz] * psiEyz[ix,iy,iz]
-            Hy[ix,iy,iz] -= Mh[ix,iy,iz] * psiExz[ix,iy,iz]
+        if iy <= ylayer1.ind   # y left layer [1:iy1]
+            (; K, A, B) = ylayer1
+            iypml = iy
+            psiExy1[ix,iypml,iz] = B[iypml] * psiExy1[ix,iypml,iz] + A[iypml] * dExy
+            psiEzy1[ix,iypml,iz] = B[iypml] * psiEzy1[ix,iypml,iz] + A[iypml] * dEzy
+            Hx[ix,iy,iz] -= Mh[ix,iy,iz] * psiEzy1[ix,iypml,iz]
+            Hz[ix,iy,iz] += Mh[ix,iy,iz] * psiExy1[ix,iypml,iz]
+            dExy = dExy / K[iypml]
+            dEzy = dEzy / K[iypml]
+        end
+        if iy >= ylayer2.ind   # y right layer [iy2:Ny]
+            (; ind, K, A, B) = ylayer2
+            iypml = iy - ind + 1
+            psiExy2[ix,iypml,iz] = B[iypml] * psiExy2[ix,iypml,iz] + A[iypml] * dExy
+            psiEzy2[ix,iypml,iz] = B[iypml] * psiEzy2[ix,iypml,iz] + A[iypml] * dEzy
+            Hx[ix,iy,iz] -= Mh[ix,iy,iz] * psiEzy2[ix,iypml,iz]
+            Hz[ix,iy,iz] += Mh[ix,iy,iz] * psiExy2[ix,iypml,iz]
+            dExy = dExy / K[iypml]
+            dEzy = dEzy / K[iypml]
+        end
+        if iz <= zlayer1.ind   # z left layer [1:iz1]
+            (; K, A, B) = zlayer1
+            izpml = iz
+            psiExz1[ix,iy,izpml] = B[izpml] * psiExz1[ix,iy,izpml] + A[izpml] * dExz
+            psiEyz1[ix,iy,izpml] = B[izpml] * psiEyz1[ix,iy,izpml] + A[izpml] * dEyz
+            Hx[ix,iy,iz] += Mh[ix,iy,iz] * psiEyz1[ix,iy,izpml]
+            Hy[ix,iy,iz] -= Mh[ix,iy,iz] * psiExz1[ix,iy,izpml]
+            dExz = dExz / K[izpml]
+            dEyz = dEyz / K[izpml]
+        end
+        if iz >= zlayer2.ind   # z right layer [iz2:Nz]
+            (; ind, K, A, B) = zlayer2
+            izpml = iz - ind + 1
+            psiExz2[ix,iy,izpml] = B[izpml] * psiExz2[ix,iy,izpml] + A[izpml] * dExz
+            psiEyz2[ix,iy,izpml] = B[izpml] * psiEyz2[ix,iy,izpml] + A[izpml] * dEyz
+            Hx[ix,iy,iz] += Mh[ix,iy,iz] * psiEyz2[ix,iy,izpml]
+            Hy[ix,iy,iz] -= Mh[ix,iy,iz] * psiExz2[ix,iy,izpml]
+            dExz = dExz / K[izpml]
+            dEyz = dEyz / K[izpml]
         end
 
         # update H:
-        Hx[ix,iy,iz] -= Mh[ix,iy,iz] * (dEzy / Ky[iy] - dEyz / Kz[iz])
-        Hy[ix,iy,iz] -= Mh[ix,iy,iz] * (dExz / Kz[iz] - dEzx / Kx[ix])
-        Hz[ix,iy,iz] -= Mh[ix,iy,iz] * (dEyx / Kx[ix] - dExy / Ky[iy])
+        Hx[ix,iy,iz] -= Mh[ix,iy,iz] * (dEzy - dEyz)
+        Hy[ix,iy,iz] -= Mh[ix,iy,iz] * (dExz - dEzx)
+        Hz[ix,iy,iz] -= Mh[ix,iy,iz] * (dEyx - dExy)
     end
 end
 function update_H!(model::Model3D)
@@ -620,8 +722,9 @@ end
 @kernel function update_E_kernel!(model::Model3D)
     (; field, pml, Me, Md1, Md2) = model
     (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
-    (; ix1, ix2, iy1, iy2, iz1, iz2, Kx, Ax, Bx, Ky, Ay, By, Kz, Az, Bz) = pml
-    (; psiHxy, psiHxz, psiHyx, psiHyz, psiHzx, psiHzy) = pml
+    (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
+       ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
+       zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
@@ -640,32 +743,71 @@ end
         dHzy = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
 
         # apply CPML:
-        if (ix <= ix1) || (ix >= ix2)
-            psiHyx[ix,iy,iz] = Bx[ix] * psiHyx[ix,iy,iz] + Ax[ix] * dHyx
-            psiHzx[ix,iy,iz] = Bx[ix] * psiHzx[ix,iy,iz] + Ax[ix] * dHzx
-            Dy[ix,iy,iz] -= Md2[ix,iy,iz] * psiHzx[ix,iy,iz]
-            Dz[ix,iy,iz] += Md2[ix,iy,iz] * psiHyx[ix,iy,iz]
+        if ix <= xlayer1.ind   # x left layer [1:ix1]
+            (; K, A, B) = xlayer1
+            ixpml = ix
+            psiHyx1[ixpml,iy,iz] = B[ixpml] * psiHyx1[ixpml,iy,iz] + A[ixpml] * dHyx
+            psiHzx1[ixpml,iy,iz] = B[ixpml] * psiHzx1[ixpml,iy,iz] + A[ixpml] * dHzx
+            Dy[ix,iy,iz] -= Md2[ix,iy,iz] * psiHzx1[ixpml,iy,iz]
+            Dz[ix,iy,iz] += Md2[ix,iy,iz] * psiHyx1[ixpml,iy,iz]
+            dHyx = dHyx / K[ixpml]
+            dHzx = dHzx / K[ixpml]
         end
-        if (iy <= iy1) || (iy >= iy2)
-            psiHxy[ix,iy,iz] = By[iy] * psiHxy[ix,iy,iz] + Ay[iy] * dHxy
-            psiHzy[ix,iy,iz] = By[iy] * psiHzy[ix,iy,iz] + Ay[iy] * dHzy
-            Dx[ix,iy,iz] += Md2[ix,iy,iz] * psiHzy[ix,iy,iz]
-            Dz[ix,iy,iz] -= Md2[ix,iy,iz] * psiHxy[ix,iy,iz]
+        if ix >= xlayer2.ind   # x right layer [ix2:Nx]
+            (; ind, K, A, B) = xlayer2
+            ixpml = ix - ind + 1
+            psiHyx2[ixpml,iy,iz] = B[ixpml] * psiHyx2[ixpml,iy,iz] + A[ixpml] * dHyx
+            psiHzx2[ixpml,iy,iz] = B[ixpml] * psiHzx2[ixpml,iy,iz] + A[ixpml] * dHzx
+            Dy[ix,iy,iz] -= Md2[ix,iy,iz] * psiHzx2[ixpml,iy,iz]
+            Dz[ix,iy,iz] += Md2[ix,iy,iz] * psiHyx2[ixpml,iy,iz]
+            dHyx = dHyx / K[ixpml]
+            dHzx = dHzx / K[ixpml]
         end
-        if (iz <= iz1) || (iz >= iz2)
-            psiHxz[ix,iy,iz] = Bz[iz] * psiHxz[ix,iy,iz] + Az[iz] * dHxz
-            psiHyz[ix,iy,iz] = Bz[iz] * psiHyz[ix,iy,iz] + Az[iz] * dHyz
-            Dx[ix,iy,iz] -= Md2[ix,iy,iz] * psiHyz[ix,iy,iz]
-            Dy[ix,iy,iz] += Md2[ix,iy,iz] * psiHxz[ix,iy,iz]
+        if iy <= ylayer1.ind   # y left layer [1:iy1]
+            (; K, A, B) = ylayer1
+            iypml = iy
+            psiHxy1[ix,iypml,iz] = B[iypml] * psiHxy1[ix,iypml,iz] + A[iypml] * dHxy
+            psiHzy1[ix,iypml,iz] = B[iypml] * psiHzy1[ix,iypml,iz] + A[iypml] * dHzy
+            Dx[ix,iy,iz] += Md2[ix,iy,iz] * psiHzy1[ix,iypml,iz]
+            Dz[ix,iy,iz] -= Md2[ix,iy,iz] * psiHxy1[ix,iypml,iz]
+            dHxy = dHxy / K[iypml]
+            dHzy = dHzy / K[iypml]
+        end
+        if iy >= ylayer2.ind   # y right layer [iy2:Ny]
+            (; ind, K, A, B) = ylayer2
+            iypml = iy - ind + 1
+            psiHxy2[ix,iypml,iz] = B[iypml] * psiHxy2[ix,iypml,iz] + A[iypml] * dHxy
+            psiHzy2[ix,iypml,iz] = B[iypml] * psiHzy2[ix,iypml,iz] + A[iypml] * dHzy
+            Dx[ix,iy,iz] += Md2[ix,iy,iz] * psiHzy2[ix,iypml,iz]
+            Dz[ix,iy,iz] -= Md2[ix,iy,iz] * psiHxy2[ix,iypml,iz]
+            dHxy = dHxy / K[iypml]
+            dHzy = dHzy / K[iypml]
+        end
+        if iz <= zlayer1.ind   # z left layer [1:iz1]
+            (; K, A, B) = zlayer1
+            izpml = iz
+            psiHxz1[ix,iy,izpml] = B[izpml] * psiHxz1[ix,iy,izpml] + A[izpml] * dHxz
+            psiHyz1[ix,iy,izpml] = B[izpml] * psiHyz1[ix,iy,izpml] + A[izpml] * dHyz
+            Dx[ix,iy,iz] -= Md2[ix,iy,iz] * psiHyz1[ix,iy,izpml]
+            Dy[ix,iy,iz] += Md2[ix,iy,iz] * psiHxz1[ix,iy,izpml]
+            dHxz = dHxz / K[izpml]
+            dHyz = dHyz / K[izpml]
+        end
+        if iz >= zlayer2.ind   # z right layer [iz2:Nz]
+            (; ind, K, A, B) = zlayer2
+            izpml = iz - ind + 1
+            psiHxz2[ix,iy,izpml] = B[izpml] * psiHxz2[ix,iy,izpml] + A[izpml] * dHxz
+            psiHyz2[ix,iy,izpml] = B[izpml] * psiHyz2[ix,iy,izpml] + A[izpml] * dHyz
+            Dx[ix,iy,iz] -= Md2[ix,iy,iz] * psiHyz2[ix,iy,izpml]
+            Dy[ix,iy,iz] += Md2[ix,iy,iz] * psiHxz2[ix,iy,izpml]
+            dHxz = dHxz / K[izpml]
+            dHyz = dHyz / K[izpml]
         end
 
         # update D:
-        Dx[ix,iy,iz] = Md1[ix,iy,iz] * Dx[ix,iy,iz] +
-                       Md2[ix,iy,iz] * (dHzy / Ky[iy] - dHyz / Kz[iz])
-        Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] +
-                       Md2[ix,iy,iz] * (dHxz / Kz[iz] - dHzx / Kx[ix])
-        Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] +
-                       Md2[ix,iy,iz] * (dHyx / Kx[ix] - dHxy / Ky[iy])
+        Dx[ix,iy,iz] = Md1[ix,iy,iz] * Dx[ix,iy,iz] + Md2[ix,iy,iz] * (dHzy - dHyz)
+        Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] + Md2[ix,iy,iz] * (dHxz - dHzx)
+        Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] + Md2[ix,iy,iz] * (dHyx - dHxy)
 
         # update P:
         Nq = size(Px, 1)
