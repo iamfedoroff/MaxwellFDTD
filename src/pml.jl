@@ -1,3 +1,18 @@
+struct PMLData{T}
+    thickness :: T
+    kappa :: T
+    alpha :: T
+    R0 :: T
+    m :: Int
+end
+
+
+function CPML(; thickness, kappa=1, alpha=10e-6, R0=10e-6, m=3)
+    thickness, kappa, alpha, R0 = promote(thickness, kappa, alpha, R0)
+    return PMLData(thickness, kappa, alpha, R0, m)
+end
+
+
 # ******************************************************************************************
 # PML layer
 # ******************************************************************************************
@@ -75,11 +90,21 @@ function PML(z, box, dt)
     Nz = length(z)
     Lz1, Lz2 = box
 
-    zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    if typeof(Lz1) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lz1
+        zlayer1 = LeftPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+    else
+        zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    end
     Nzpml = zlayer1.ind
     psiHyz1, psiExz1 = zeros(Nzpml), zeros(Nzpml)
 
-    zlayer2 = RightPMLLayer(z, Lz2, dt)
+    if typeof(Lz2) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lz2
+        zlayer2 = RightPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+    else
+        zlayer2 = RightPMLLayer(z, Lz2, dt)
+    end
     Nzpml = Nz - zlayer2.ind + 1
     psiHyz2, psiExz2 = zeros(Nzpml), zeros(Nzpml)
 
@@ -119,19 +144,39 @@ function PML(x, z, box, dt)
     Nx, Nz = length(x), length(z)
     Lx1, Lx2, Lz1, Lz2 = box
 
-    xlayer1 = LeftPMLLayer(x, Lx1, dt)
+    if typeof(Lx1) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lx1
+        xlayer1 = LeftPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+    else
+        xlayer1 = LeftPMLLayer(x, Lx1, dt)
+    end
     Nxpml = xlayer1.ind
     psiHyx1, psiEzx1 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
 
-    xlayer2 = RightPMLLayer(x, Lx2, dt)
+    if typeof(Lx2) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lx2
+        xlayer2 = RightPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+    else
+        xlayer2 = RightPMLLayer(x, Lx2, dt)
+    end
     Nxpml = Nx - xlayer2.ind + 1
     psiHyx2, psiEzx2 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
 
-    zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    if typeof(Lz1) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lz1
+        zlayer1 = LeftPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+    else
+        zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    end
     Nzpml = zlayer1.ind
     psiHyz1, psiExz1 = zeros(Nx,Nzpml), zeros(Nx,Nzpml)
 
-    zlayer2 = RightPMLLayer(z, Lz2, dt)
+    if typeof(Lz2) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lz2
+        zlayer2 = RightPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+    else
+        zlayer2 = RightPMLLayer(z, Lz2, dt)
+    end
     Nzpml = Nz - zlayer2.ind + 1
     psiHyz2, psiExz2 = zeros(Nx,Nzpml), zeros(Nx,Nzpml)
 
@@ -193,27 +238,57 @@ function PML(x, y, z, box, dt)
     Nx, Ny, Nz = length(x), length(y), length(z)
     Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = box
 
-    xlayer1 = LeftPMLLayer(x, Lx1, dt)
+    if typeof(Lx1) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lx1
+        xlayer1 = LeftPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+    else
+        xlayer1 = LeftPMLLayer(x, Lx1, dt)
+    end
     Nxpml = xlayer1.ind
     psiHyx1, psiHzx1, psiEyx1, psiEzx1 = (zeros(Nxpml,Ny,Nz) for i=1:4)
 
-    xlayer2 = RightPMLLayer(x, Lx2, dt)
+    if typeof(Lx2) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lx2
+        xlayer2 = RightPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+    else
+        xlayer2 = RightPMLLayer(x, Lx2, dt)
+    end
     Nxpml = Nx - xlayer2.ind + 1
     psiHyx2, psiHzx2, psiEyx2, psiEzx2 = (zeros(Nxpml,Ny,Nz) for i=1:4)
 
-    ylayer1 = LeftPMLLayer(y, Ly1, dt)
+    if typeof(Ly1) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Ly1
+        ylayer1 = LeftPMLLayer(y, thickness, dt; kappa, alpha, R0, m)
+    else
+        ylayer1 = LeftPMLLayer(y, Ly1, dt)
+    end
     Nypml = ylayer1.ind
     psiHxy1, psiHzy1, psiExy1, psiEzy1 = (zeros(Nx,Nypml,Nz) for i=1:4)
 
-    ylayer2 = RightPMLLayer(y, Ly2, dt)
+    if typeof(Ly2) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Ly2
+        ylayer2 = RightPMLLayer(y, thickness, dt; kappa, alpha, R0, m)
+    else
+        ylayer2 = RightPMLLayer(y, Ly2, dt)
+    end
     Nypml = Ny - ylayer2.ind + 1
     psiHxy2, psiHzy2, psiExy2, psiEzy2 = (zeros(Nx,Nypml,Nz) for i=1:4)
 
-    zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    if typeof(Lz1) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lz1
+        zlayer1 = LeftPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+    else
+        zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    end
     Nzpml = zlayer1.ind
     psiHxz1, psiHyz1, psiExz1, psiEyz1 = (zeros(Nx,Ny,Nzpml) for i=1:4)
 
-    zlayer2 = RightPMLLayer(z, Lz2, dt)
+    if typeof(Lz2) <: PMLData
+        (; thickness, kappa, alpha, R0, m) = Lz2
+        zlayer2 = RightPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+    else
+        zlayer2 = RightPMLLayer(z, Lz2, dt)
+    end
     Nzpml = Nz - zlayer2.ind + 1
     psiHxz2, psiHyz2, psiExz2, psiEyz2 = (zeros(Nx,Ny,Nzpml) for i=1:4)
 
