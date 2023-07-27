@@ -620,8 +620,10 @@ function Model(
 end
 
 
-@kernel function update_H_kernel!(model::Model3D)
-    (; field, pml, Mh) = model
+# In order to avoid the issue caused by the large size of the CUDA kernel parameters,
+# here we pass the parameters of the model explicitly:
+# https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
+@kernel function update_H_kernel!(field::Field3D, pml, Mh)
     (; xlayer1, psiEyx1, psiEzx1, xlayer2, psiEyx2, psiEzx2,
        ylayer1, psiExy1, psiEzy1, ylayer2, psiExy2, psiEzy2,
        zlayer1, psiExz1, psiEyz1, zlayer2, psiExz2, psiEyz2) = pml
@@ -714,14 +716,22 @@ function update_H!(model::Model3D)
     (; Hx) = model.field
     backend = get_backend(Hx)
     ndrange = size(Hx)
-    update_H_kernel!(backend)(model; ndrange)
+    # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
+    # here we pass the parameters of the model explicitly:
+    # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
+    (; field, pml, Mh) = model
+    update_H_kernel!(backend)(field, pml, Mh; ndrange)
     return nothing
 end
 
 
-@kernel function update_E_kernel!(model::Model3D)
-    (; field, pml, Me, Md1, Md2) = model
-    (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
+# In order to avoid the issue caused by the large size of the CUDA kernel parameters,
+# here we pass the parameters of the model explicitly:
+# https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
+@kernel function update_E_kernel!(
+    field::Field3D, pml, Me, Md1, Md2,
+    Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
+)
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
@@ -852,7 +862,16 @@ function update_E!(model::Model3D)
     (; Ex) = model.field
     backend = get_backend(Ex)
     ndrange = size(Ex)
-    update_E_kernel!(backend)(model; ndrange)
+    # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
+    # here we pass the parameters of the model explicitly:
+    # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
+    (; field, pml, Me, Md1, Md2,
+       Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
+    update_E_kernel!(backend)(
+        field, pml, Me, Md1, Md2,
+        Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2;
+        ndrange
+    )
     return nothing
 end
 
