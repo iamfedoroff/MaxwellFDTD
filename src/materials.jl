@@ -7,8 +7,9 @@ struct DebyeSusceptibility{T} <: Susceptibility
 end
 
 
-DebyeSusceptibility(; deps, tau) =
-    DebyeSusceptibility(promote(deps, tau)...)
+function DebyeSusceptibility(; deps, tau)
+    return DebyeSusceptibility(promote(deps, tau)...)
+end
 
 
 struct DrudeSusceptibility{T} <: Susceptibility
@@ -17,8 +18,9 @@ struct DrudeSusceptibility{T} <: Susceptibility
 end
 
 
-DrudeSusceptibility(; wp, gamma) =
-    DrudeSusceptibility(promote(wp, gamma)...)
+function DrudeSusceptibility(; wp, gamma)
+    return DrudeSusceptibility(promote(wp, gamma)...)
+end
 
 
 struct LorentzSusceptibility{T} <: Susceptibility
@@ -28,12 +30,14 @@ struct LorentzSusceptibility{T} <: Susceptibility
 end
 
 
-LorentzSusceptibility(; deps, w0, delta) =
-    LorentzSusceptibility(promote(deps, w0, delta)...)
+function LorentzSusceptibility(; deps, w0, delta)
+    return LorentzSusceptibility(promote(deps, w0, delta)...)
+end
 
 
 # ******************************************************************************
-struct Material{T, C}
+struct Material{G, T, C}
+    geometry :: G
     eps :: T
     mu :: T
     sigma :: T
@@ -41,13 +45,14 @@ struct Material{T, C}
 end
 
 
-function Material(; eps=1, mu=1, sigma=0, chi=nothing)
+function Material(; geometry, eps=1, mu=1, sigma=0, chi=nothing)
+    eps, mu, sigma = promote(eps, mu, sigma)
     if isnothing(chi)
-        chi = [nothing]
+        chi = (nothing,)
     elseif chi isa Susceptibility
-        chi = [chi]
+        chi = (chi,)
     end
-    return Material(promote(eps, mu, sigma)..., chi)
+    return Material(geometry, eps, mu, sigma, chi)
 end
 
 
