@@ -86,6 +86,7 @@ struct Model1D{F, S, P, T, R, A, AP}
     Md1 :: A
     Md2 :: A
     # Variables for ADE dispersion calculation:
+    dispersion :: Bool
     Aq :: AP
     Bq :: AP
     Cq :: AP
@@ -126,16 +127,29 @@ function Model(
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Variables for ADE dispersion calculation:
-    Nq = length(chi)
-    Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
-    for iz=1:Nz, iq=1:Nq
-        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,iz] = geometry(z[iz]) * Aq0
-        Bq[iq,iz] = geometry(z[iz]) * Bq0
-        Cq[iq,iz] = geometry(z[iz]) * Cq0
-    end
-    Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
+    if isnothing(chi)
+        dispersion = false
 
+        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
+        Aq, Bq, Cq = (zeros(1) for i=1:3)
+        Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
+    else
+        dispersion = true
+
+        if chi isa Susceptibility
+            chi = (chi,)
+        end
+
+        Nq = length(chi)
+        Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
+        for iz=1:Nz, iq=1:Nq
+            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+            Aq[iq,iz] = geometry(z[iz]) * Aq0
+            Bq[iq,iz] = geometry(z[iz]) * Bq0
+            Cq[iq,iz] = geometry(z[iz]) * Cq0
+        end
+        Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
+    end
 
     # Compensation for the numerical dispersion:
     # dt = t[2] - t[1]
@@ -155,7 +169,7 @@ function Model(
 
     return Model1D(
         field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
-        Aq, Bq, Cq, Px, oldPx1, oldPx2,
+        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
     )
 end
 
@@ -204,7 +218,7 @@ end
 
 @kernel function update_E_kernel!(model::Model1D)
     (; field, pml, Me, Md1, Md2) = model
-    (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
+    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
@@ -236,15 +250,17 @@ end
         Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz)
 
         # update P:
-        Nq = size(Px, 1)
-        sumPx = zero(eltype(Px))
-        for iq=1:Nq
-            oldPx2[iq,iz] = oldPx1[iq,iz]
-            oldPx1[iq,iz] = Px[iq,iz]
-            Px[iq,iz] = Aq[iq,iz] * Px[iq,iz] +
-                        Bq[iq,iz] * oldPx2[iq,iz] +
-                        Cq[iq,iz] * Ex[iz]
-            sumPx += Px[iq,iz]
+        sumPx = zero(eltype(Ex))
+        if dispersion
+            Nq = size(Px, 1)
+            for iq=1:Nq
+                oldPx2[iq,iz] = oldPx1[iq,iz]
+                oldPx1[iq,iz] = Px[iq,iz]
+                Px[iq,iz] = Aq[iq,iz] * Px[iq,iz] +
+                            Bq[iq,iz] * oldPx2[iq,iz] +
+                            Cq[iq,iz] * Ex[iz]
+                sumPx += Px[iq,iz]
+            end
         end
 
         # update E:
@@ -282,6 +298,7 @@ struct Model2D{F, S, P, T, R, A, AP}
     Md1 :: A
     Md2 :: A
     # Variables for ADE dispersion calculation:
+    dispersion :: Bool
     Aq :: AP
     Bq :: AP
     Cq :: AP
@@ -325,16 +342,31 @@ function Model(
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Variables for ADE dispersion calculation:
-    Nq = length(chi)
-    Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
-    for iz=1:Nz, ix=1:Nx, iq=1:Nq
-        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,ix,iz] = geometry(x[ix],z[iz]) * Aq0
-        Bq[iq,ix,iz] = geometry(x[ix],z[iz]) * Bq0
-        Cq[iq,ix,iz] = geometry(x[ix],z[iz]) * Cq0
+    if isnothing(chi)
+        dispersion = false
+
+        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
+        Aq, Bq, Cq = (zeros(1) for i=1:3)
+        Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
+        Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
+    else
+        dispersion = true
+
+        if chi isa Susceptibility
+            chi = (chi,)
+        end
+
+        Nq = length(chi)
+        Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
+        for iz=1:Nz, ix=1:Nx, iq=1:Nq
+            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+            Aq[iq,ix,iz] = geometry(x[ix],z[iz]) * Aq0
+            Bq[iq,ix,iz] = geometry(x[ix],z[iz]) * Bq0
+            Cq[iq,ix,iz] = geometry(x[ix],z[iz]) * Cq0
+        end
+        Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
+        Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
     end
-    Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
-    Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
@@ -344,7 +376,7 @@ function Model(
 
     return Model2D(
         field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
-        Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
+        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
     )
 end
 
@@ -409,7 +441,7 @@ end
 
 @kernel function update_E_kernel!(model::Model2D)
     (; field, pml, Me, Md1, Md2) = model
-    (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
@@ -458,22 +490,24 @@ end
         Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx - 0)
 
         # update P:
-        Nq = size(Px, 1)
-        sumPx = zero(eltype(Px))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
-            oldPx1[iq,ix,iz] = Px[iq,ix,iz]
-            Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
-                           Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
-                           Cq[iq,ix,iz] * Ex[ix,iz]
-            oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
-            oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
-            Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
-                           Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
-                           Cq[iq,ix,iz] * Ez[ix,iz]
-            sumPx += Px[iq,ix,iz]
-            sumPz += Pz[iq,ix,iz]
+        sumPx = zero(eltype(Ex))
+        sumPz = zero(eltype(Ez))
+        if dispersion
+            Nq = size(Px, 1)
+            for iq=1:Nq
+                oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
+                oldPx1[iq,ix,iz] = Px[iq,ix,iz]
+                Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
+                            Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
+                            Cq[iq,ix,iz] * Ex[ix,iz]
+                oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
+                oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
+                Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
+                            Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
+                            Cq[iq,ix,iz] * Ez[ix,iz]
+                sumPx += Px[iq,ix,iz]
+                sumPz += Pz[iq,ix,iz]
+            end
         end
 
         # update E:
@@ -513,6 +547,7 @@ struct Model3D{F, S, P, T, R, A, AP}
     Md1 :: A
     Md2 :: A
     # Variables for ADE dispersion calculation:
+    dispersion :: Bool
     Aq :: AP
     Bq :: AP
     Cq :: AP
@@ -563,17 +598,33 @@ function Model(
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Variables for ADE dispersion calculation:
-    Nq = length(chi)
-    Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-    for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
-        Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-        Aq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Aq0
-        Bq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Bq0
-        Cq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Cq0
+    if isnothing(chi)
+        dispersion = false
+
+        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
+        Aq, Bq, Cq = (zeros(1) for i=1:3)
+        Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
+        Py, oldPy1, oldPy2 = (zeros(1) for i=1:3)
+        Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
+    else
+        dispersion = true
+
+        if chi isa Susceptibility
+            chi = (chi,)
+        end
+
+        Nq = length(chi)
+        Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+        for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
+            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
+            Aq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Aq0
+            Bq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Bq0
+            Cq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Cq0
+        end
+        Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+        Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
+        Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
     end
-    Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-    Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-    Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
@@ -583,7 +634,7 @@ function Model(
 
     return Model3D(
         field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
-        Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
+        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
     )
 end
 
@@ -698,7 +749,7 @@ end
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
 @kernel function update_E_kernel!(
     field::Field3D, pml, Me, Md1, Md2,
-    Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
+    dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
 )
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
@@ -788,29 +839,31 @@ end
         Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] + Md2[ix,iy,iz] * (dHyx - dHxy)
 
         # update P:
-        Nq = size(Px, 1)
-        sumPx = zero(eltype(Px))
-        sumPy = zero(eltype(Py))
-        sumPz = zero(eltype(Pz))
-        for iq=1:Nq
-            oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
-            oldPx1[iq,ix,iy,iz] = Px[iq,ix,iy,iz]
-            Px[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Px[iq,ix,iy,iz] +
-                              Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
-                              Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
-            oldPy2[iq,ix,iy,iz] = oldPy1[iq,ix,iy,iz]
-            oldPy1[iq,ix,iy,iz] = Py[iq,ix,iy,iz]
-            Py[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Py[iq,ix,iy,iz] +
-                              Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
-                              Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
-            oldPz2[iq,ix,iy,iz] = oldPz1[iq,ix,iy,iz]
-            oldPz1[iq,ix,iy,iz] = Pz[iq,ix,iy,iz]
-            Pz[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Pz[iq,ix,iy,iz] +
-                              Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
-                              Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
-            sumPx += Px[iq,ix,iy,iz]
-            sumPy += Py[iq,ix,iy,iz]
-            sumPz += Pz[iq,ix,iy,iz]
+        sumPx = zero(eltype(Ex))
+        sumPy = zero(eltype(Ey))
+        sumPz = zero(eltype(Ez))
+        if dispersion
+            Nq = size(Px, 1)
+            for iq=1:Nq
+                oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
+                oldPx1[iq,ix,iy,iz] = Px[iq,ix,iy,iz]
+                Px[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Px[iq,ix,iy,iz] +
+                                Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
+                                Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
+                oldPy2[iq,ix,iy,iz] = oldPy1[iq,ix,iy,iz]
+                oldPy1[iq,ix,iy,iz] = Py[iq,ix,iy,iz]
+                Py[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Py[iq,ix,iy,iz] +
+                                Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
+                                Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
+                oldPz2[iq,ix,iy,iz] = oldPz1[iq,ix,iy,iz]
+                oldPz1[iq,ix,iy,iz] = Pz[iq,ix,iy,iz]
+                Pz[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Pz[iq,ix,iy,iz] +
+                                Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
+                                Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
+                sumPx += Px[iq,ix,iy,iz]
+                sumPy += Py[iq,ix,iy,iz]
+                sumPz += Pz[iq,ix,iy,iz]
+            end
         end
 
         # update E:
@@ -833,11 +886,11 @@ function update_E!(model::Model3D)
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, pml, Me, Md1, Md2,
+    (; field, pml, Me, Md1, Md2, dispersion,
        Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
     update_E_kernel!(backend)(
         field, pml, Me, Md1, Md2,
-        Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2;
+        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2;
         ndrange
     )
     return nothing

@@ -1,3 +1,21 @@
+struct Material{G, T, C}
+    geometry :: G
+    eps :: T
+    mu :: T
+    sigma :: T
+    chi :: C
+end
+
+
+function Material(; geometry, eps=1, mu=1, sigma=0, chi=nothing)
+    eps, mu, sigma = promote(eps, mu, sigma)
+    return Material(geometry, eps, mu, sigma, chi)
+end
+
+
+# ******************************************************************************************
+# Susceptibilities
+# ******************************************************************************************
 abstract type Susceptibility end
 
 
@@ -12,56 +30,6 @@ function DebyeSusceptibility(; deps, tau)
 end
 
 
-struct DrudeSusceptibility{T} <: Susceptibility
-    wp :: T
-    gamma :: T
-end
-
-
-function DrudeSusceptibility(; wp, gamma)
-    return DrudeSusceptibility(promote(wp, gamma)...)
-end
-
-
-struct LorentzSusceptibility{T} <: Susceptibility
-    deps :: T
-    w0 :: T
-    delta :: T
-end
-
-
-function LorentzSusceptibility(; deps, w0, delta)
-    return LorentzSusceptibility(promote(deps, w0, delta)...)
-end
-
-
-# ******************************************************************************
-struct Material{G, T, C}
-    geometry :: G
-    eps :: T
-    mu :: T
-    sigma :: T
-    chi :: C
-end
-
-
-function Material(; geometry, eps=1, mu=1, sigma=0, chi=nothing)
-    eps, mu, sigma = promote(eps, mu, sigma)
-    if isnothing(chi)
-        chi = (nothing,)
-    elseif chi isa Susceptibility
-        chi = (chi,)
-    end
-    return Material(geometry, eps, mu, sigma, chi)
-end
-
-
-# ******************************************************************************
-function ade_coefficients(chi::Nothing, dt)
-    return 0, 0, 0
-end
-
-
 function ade_coefficients(chi::DebyeSusceptibility, dt)
     (; deps, tau) = chi
     aq = 1 / tau
@@ -73,6 +41,18 @@ function ade_coefficients(chi::DebyeSusceptibility, dt)
 end
 
 
+# ------------------------------------------------------------------------------------------
+struct DrudeSusceptibility{T} <: Susceptibility
+    wp :: T
+    gamma :: T
+end
+
+
+function DrudeSusceptibility(; wp, gamma)
+    return DrudeSusceptibility(promote(wp, gamma)...)
+end
+
+
 function ade_coefficients(chi::DrudeSusceptibility, dt)
     (; wp, gamma) = chi
     aq = gamma
@@ -81,6 +61,19 @@ function ade_coefficients(chi::DrudeSusceptibility, dt)
     Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
     Cq = bq * dt^2 / (aq * dt / 2 + 1)
     return Aq, Bq, Cq
+end
+
+
+# ------------------------------------------------------------------------------------------
+struct LorentzSusceptibility{T} <: Susceptibility
+    deps :: T
+    w0 :: T
+    delta :: T
+end
+
+
+function LorentzSusceptibility(; deps, w0, delta)
+    return LorentzSusceptibility(promote(deps, w0, delta)...)
 end
 
 
