@@ -22,11 +22,8 @@ function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0))
 
     # Time grid:
     dt = time_step(grid, CN)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    @show Nt, dt
-    @show length(t), t[2]-t[1]
+    t = range(start=0, step=dt, stop=tmax)
+    Nt = length(t)
 
     source = source_init(source_data, field, t)
 
