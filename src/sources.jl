@@ -632,7 +632,7 @@ end
 # ------------------------------------------------------------------------------------------
 # TFSF record 1D
 # ------------------------------------------------------------------------------------------
-function prepare_tfsf_record(model::Model1D, tfsf_box, tfsf_fname)
+function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: Field1D
     (; field, Nt, t) = model
     (; grid, Hy) = field
     (; Nz, z) = grid
@@ -655,7 +655,7 @@ function prepare_tfsf_record(model::Model1D, tfsf_box, tfsf_fname)
 end
 
 
-function write_tfsf_record(model::Model1D, tfsf_data, it)
+function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field1D
     (; field) = model
     (; Hy, Ex) = field
     (; fname, tfsf_box) = tfsf_data
@@ -673,7 +673,7 @@ end
 # ------------------------------------------------------------------------------------------
 # TFSF record 2D
 # ------------------------------------------------------------------------------------------
-function prepare_tfsf_record(model::Model2D, tfsf_box, tfsf_fname)
+function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: Field2D
     (; field, Nt, t) = model
     (; grid, Hy) = field
     (; x, z) = grid
@@ -707,7 +707,7 @@ function prepare_tfsf_record(model::Model2D, tfsf_box, tfsf_fname)
 end
 
 
-function write_tfsf_record(model::Model2D, tfsf_data, it)
+function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field2D
     (; field) = model
     (; Hy, Ex, Ez) = field
     (; fname, tfsf_box) = tfsf_data
@@ -729,7 +729,7 @@ end
 # ------------------------------------------------------------------------------------------
 # TFSF record 3D
 # ------------------------------------------------------------------------------------------
-function prepare_tfsf_record(model::Model3D, tfsf_box, tfsf_fname)
+function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: Field3D
     (; field, Nt, t) = model
     (; grid, Hy) = field
     (; x, y, z) = grid
@@ -789,7 +789,7 @@ function prepare_tfsf_record(model::Model3D, tfsf_box, tfsf_fname)
 end
 
 
-function write_tfsf_record(model::Model3D, tfsf_data, it)
+function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field3D
     (; field) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; fname, tfsf_box) = tfsf_data

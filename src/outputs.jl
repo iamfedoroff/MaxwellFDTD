@@ -74,7 +74,7 @@ function prepare_output!(fp, Ntout, grid::Grid1D{T}) where T
 end
 
 
-function write_output!(out, model::Model1D)
+function write_output!(out, model::Model{F}) where F <: Field1D
     (; field) = model
     (; Hy, Ex) = field
     (; fname, itout) = out
@@ -86,7 +86,7 @@ function write_output!(out, model::Model1D)
 end
 
 
-function update_output_variables(out, model::Model1D)
+function update_output_variables(out, model::Model{F}) where F <: Field1D
     (; Sa) = out
     (; field) = model
     (; Hy, Ex) = field
@@ -110,7 +110,7 @@ function prepare_output!(fp, Ntout, grid::Grid2D{T}) where T
 end
 
 
-function write_output!(out, model::Model2D)
+function write_output!(out, model::Model{F}) where F <: Field2D
     (; field) = model
     (; Hy, Ex, Ez) = field
     (; fname, itout) = out
@@ -123,7 +123,7 @@ function write_output!(out, model::Model2D)
 end
 
 
-function update_output_variables(out, model::Model2D)
+function update_output_variables(out, model::Model{F}) where F <: Field2D
     (; Sa) = out
     (; field) = model
     (; Hy, Ex, Ez) = field
@@ -151,7 +151,7 @@ function prepare_output!(fp, Ntout, grid::Grid3D{T}) where T
 end
 
 
-function write_output!(out, model::Model3D)
+function write_output!(out, model::Model{F}) where F <: Field3D
     (; field) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; fname, itout) = out
@@ -167,7 +167,7 @@ function write_output!(out, model::Model3D)
 end
 
 
-function update_output_variables(out, model::Model3D)
+function update_output_variables(out, model::Model{F}) where F <: Field3D
     (; Sa) = out
     (; field) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
@@ -180,8 +180,16 @@ end
 # ******************************************************************************
 # Util
 # ******************************************************************************
-default_fname(model::Model1D) = "results/1d_out.hdf"
+function default_fname(model::Model{F}) where F <: Field1D
+    return "results/1d_out.hdf"
+end
 
-default_fname(model::Model2D) = "results/2d_out.hdf"
 
-default_fname(model::Model3D) = "results/3d_out.hdf"
+function default_fname(model::Model{F}) where F <: Field2D
+    return "results/2d_out.hdf"
+end
+
+
+function default_fname(model::Model{F}) where F <: Field3D
+    return "results/3d_out.hdf"
+end

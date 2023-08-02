@@ -86,8 +86,8 @@ end
 @adapt_structure PML1D
 
 
-function PML(z, box, dt)
-    Nz = length(z)
+function PML(grid::Grid1D, box, dt)
+    (; Nz, z) = grid
     Lz1, Lz2 = box
 
     if typeof(Lz1) <: PMLData
@@ -140,8 +140,8 @@ end
 @adapt_structure PML2D
 
 
-function PML(x, z, box, dt)
-    Nx, Nz = length(x), length(z)
+function PML(grid::Grid2D, box, dt)
+    (; Nx, Nz, x, z) = grid
     Lx1, Lx2, Lz1, Lz2 = box
 
     if typeof(Lx1) <: PMLData
@@ -234,8 +234,8 @@ end
 @adapt_structure PML3D
 
 
-function PML(x, y, z, box, dt)
-    Nx, Ny, Nz = length(x), length(y), length(z)
+function PML(grid::Grid3D, box, dt)
+    (; Nx, Ny, Nz, x, y, z) = grid
     Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = box
 
     if typeof(Lx1) <: PMLData

@@ -1,4 +1,56 @@
-abstract type Model end
+struct Model{F, S, P, M, T, R, A}
+    field :: F
+    source :: S
+    pml :: P
+    material :: M
+    # Time grid:
+    Nt :: Int
+    dt :: T
+    t :: R
+    # Update coefficients for H, E and D fields:
+    Mh :: A
+    Me :: A
+    Md1 :: A
+    Md2 :: A
+end
+
+@adapt_structure Model
+
+
+function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0))
+    field = Field(grid)
+
+    # Time grid:
+    dt = time_step(grid, CN)
+    Nt = ceil(Int, tmax / dt)
+    t = range(0, tmax, Nt)
+
+    @show Nt, dt
+    @show length(t), t[2]-t[1]
+
+    source = source_init(source_data, field, t)
+
+    pml = PML(grid, pml_box, dt)
+
+    eps, mu, sigma, material = material_init(material, grid, dt)
+
+    # Compensation for the numerical dispersion:
+    # dt = t[2] - t[1]
+    # lam0 = 2e-6   # (m) wavelength
+    # w0 = 2*pi * C0 / lam0   # frequency
+    # sn = C0 * dt/dz * sin(w0/C0 * dz/2) / sin(w0 * dt/2)
+    # @show sn
+    # eps = @. sn * eps
+    # mu = @. sn * mu
+
+    # Update coefficients for H, E and D fields:
+    Mh = @. dt / (MU0*mu)
+    Me = @. 1 / (EPS0*eps)
+    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = @. dt / (1 + sigma*dt/2)
+
+    return Model(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
+end
 
 
 function step!(model, it)
@@ -72,63 +124,7 @@ end
 # ******************************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
-struct Model1D{F, S, P, M, T, R, A}
-    field :: F
-    source :: S
-    pml :: P
-    material :: M
-    # Time grid:
-    Nt :: Int
-    dt :: T
-    t :: R
-    # Update coefficients for H, E and D fields:
-    Mh :: A
-    Me :: A
-    Md1 :: A
-    Md2 :: A
-end
-
-@adapt_structure Model1D
-
-
-function Model(
-    grid::Grid1D, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0),
-)
-    (; dz, z) = grid
-
-    field = Field(grid)
-
-    # Time grid:
-    dt = CN / C0 / sqrt(1/dz^2)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    source = source_init(source_data, field, t)
-
-    pml = PML(z, pml_box, dt)
-
-    eps, mu, sigma, material = material_init(material, grid, dt)
-
-    # Compensation for the numerical dispersion:
-    # dt = t[2] - t[1]
-    # lam0 = 2e-6   # (m) wavelength
-    # w0 = 2*pi * C0 / lam0   # frequency
-    # sn = C0 * dt/dz * sin(w0/C0 * dz/2) / sin(w0 * dt/2)
-    # @show sn
-    # eps = @. sn * eps
-    # mu = @. sn * mu
-
-    # Update coefficients for H, E and D fields:
-    Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
-    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = @. dt / (1 + sigma*dt/2)
-
-    return Model1D(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
-end
-
-
-@kernel function update_H_kernel!(model::Model1D)
+@kernel function update_H_kernel!(model::Model{F}) where F <: Field1D
     (; field, pml, Mh) = model
     (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
     (; grid, Hy, Ex) = field
@@ -161,7 +157,7 @@ end
         Hy[iz] -= Mh[iz] * (0 + dExz)
     end
 end
-function update_H!(model::Model1D)
+function update_H!(model::Model{F}) where F <: Field1D
     (; Hy) = model.field
     backend = get_backend(Hy)
     ndrange = size(Hy)
@@ -170,7 +166,7 @@ function update_H!(model::Model1D)
 end
 
 
-@kernel function update_E_kernel!(model::Model1D)
+@kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
     (; field, pml, material, Me, Md1, Md2) = model
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
@@ -226,7 +222,7 @@ end
         # Ex[iz] += dt * Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
     end
 end
-function update_E!(model::Model1D)
+function update_E!(model::Model{F}) where F <: Field1D
     (; Ex) = model.field
     backend = get_backend(Ex)
     ndrange = size(Ex)
@@ -238,54 +234,7 @@ end
 # ******************************************************************************************
 # 2D
 # ******************************************************************************************
-struct Model2D{F, S, P, M, T, R, A}
-    field :: F
-    source :: S
-    pml :: P
-    material :: M
-    # Time grid:
-    Nt :: Int
-    dt :: T
-    t :: R
-    # Update coefficients for H, E and D fields:
-    Mh :: A
-    Me :: A
-    Md1 :: A
-    Md2 :: A
-end
-
-@adapt_structure Model2D
-
-
-function Model(
-    grid::Grid2D, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0,0,0),
-)
-    (; dx, dz, x, z) = grid
-
-    field = Field(grid)
-
-    # Time grid:
-    dt = CN / C0 / sqrt(1/dx^2 + 1/dz^2)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    source = source_init(source_data, field, t)
-
-    pml = PML(x, z, pml_box, dt)
-
-    eps, mu, sigma, material = material_init(material, grid, dt)
-
-    # Update coefficients for H, E and D fields:
-    Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
-    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = @. dt / (1 + sigma*dt/2)
-
-    return Model2D(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
-end
-
-
-@kernel function update_H_kernel!(model::Model2D)
+@kernel function update_H_kernel!(model::Model{F}) where F <: Field2D
     (; field, pml, Mh) = model
     (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
     (; grid, Hy, Ex, Ez) = field
@@ -334,7 +283,7 @@ end
         Hy[ix,iz] -= Mh[ix,iz] * (dExz - dEzx)
     end
 end
-function update_H!(model::Model2D)
+function update_H!(model::Model{F}) where F <: Field2D
     (; Hy) = model.field
     backend = get_backend(Hy)
     ndrange = size(Hy)
@@ -343,7 +292,7 @@ function update_H!(model::Model2D)
 end
 
 
-@kernel function update_E_kernel!(model::Model2D)
+@kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
     (; field, pml, material, Me, Md1, Md2) = model
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
@@ -425,7 +374,7 @@ end
         # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
     end
 end
-function update_E!(model::Model2D)
+function update_E!(model::Model{F}) where F <: Field2D
     (; Ex) = model.field
     backend = get_backend(Ex)
     ndrange = size(Ex)
@@ -437,53 +386,6 @@ end
 # ******************************************************************************************
 # 3D
 # ******************************************************************************************
-struct Model3D{F, S, P, M, T, R, A}
-    field :: F
-    source :: S
-    pml :: P
-    material :: M
-    # Time grid:
-    Nt :: Int
-    dt :: T
-    t :: R
-    # Update coefficients for H, E and D fields:
-    Mh :: A
-    Me :: A
-    Md1 :: A
-    Md2 :: A
-end
-
-@adapt_structure Model3D
-
-
-function Model(
-    grid::Grid3D, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0,0,0,0,0),
-)
-    (; dx, dy, dz, x, y, z) = grid
-
-    field = Field(grid)
-
-    # Time grid:
-    dt = CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
-    Nt = ceil(Int, tmax / dt)
-    t = range(0, tmax, Nt)
-
-    source = source_init(source_data, field, t)
-
-    pml = PML(x, y, z, pml_box, dt)
-
-    eps, mu, sigma, material = material_init(material, grid, dt)
-
-    # Update coefficients for H, E and D fields:
-    Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
-    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = @. dt / (1 + sigma*dt/2)
-
-    return Model3D(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
-end
-
-
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
@@ -576,7 +478,7 @@ end
         Hz[ix,iy,iz] -= Mh[ix,iy,iz] * (dEyx - dExy)
     end
 end
-function update_H!(model::Model3D)
+function update_H!(model::Model{F}) where F <: Field3D
     (; Hx) = model.field
     backend = get_backend(Hx)
     ndrange = size(Hx)
@@ -723,7 +625,7 @@ end
         # Ez[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
     end
 end
-function update_E!(model::Model3D)
+function update_E!(model::Model{F}) where F <: Field3D
     (; Ex) = model.field
     backend = get_backend(Ex)
     ndrange = size(Ex)
@@ -739,6 +641,24 @@ end
 # ******************************************************************************************
 # Util
 # ******************************************************************************************
+function time_step(grid::Grid1D, CN)
+    (; dz) = grid
+    return CN / C0 / sqrt(1/dz^2)
+end
+
+
+function time_step(grid::Grid2D, CN)
+    (; dx, dz) = grid
+    return CN / C0 / sqrt(1/dx^2 + 1/dz^2)
+end
+
+
+function time_step(grid::Grid3D, CN)
+    (; dx, dy, dz) = grid
+    return CN / C0 / sqrt(1/dx^2 + 1/dy^2 + 1/dz^2)
+end
+
+
 """
 https://julialang.org/blog/2016/02/iteration/#a_multidimensional_boxcar_filter
 """
