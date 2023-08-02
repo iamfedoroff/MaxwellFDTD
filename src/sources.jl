@@ -2,9 +2,9 @@ abstract type Source end
 
 
 # ******************************************************************************************
-# Soft
+# Soft Source
 # ******************************************************************************************
-struct DataSoftSource{FG, FA, FP, FW, P, T, S}
+struct SoftSourceData{FG, FA, FP, FW, P, T, S}
     geometry :: FG
     amplitude :: FA
     phase :: FP
@@ -36,12 +36,21 @@ function SoftSource(;
             "a proper time delay"
         )
     end
-    return DataSoftSource(geometry, amplitude, phase, waveform, p, frequency, component)
+    return SoftSourceData(geometry, amplitude, phase, waveform, p, frequency, component)
 end
 
 
-function source_init(data::DataSoftSource, field::Field1D, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = data
+function add_source!(model, source::SoftSource, it)
+    (; field, t) = model
+    (; isrc, icomp, Amp, Phi, waveform, p) = source
+    FC = getfield(field, icomp)
+    @views @. FC[isrc] = FC[isrc] + Amp * waveform(t[it] - Phi, (p,))
+end
+
+
+# ------------------------------------------------------------------------------------------
+function source_init(source_data::SoftSourceData, field::Field1D, t)
+    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
     (; grid) = field
     (; z) = grid
 
@@ -68,8 +77,9 @@ function source_init(data::DataSoftSource, field::Field1D, t)
 end
 
 
-function source_init(data::DataSoftSource, field::Field2D, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = data
+# ------------------------------------------------------------------------------------------
+function source_init(source_data::SoftSourceData, field::Field2D, t)
+    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
     (; grid) = field
     (; Nx, Nz, x, z) = grid
 
@@ -97,8 +107,9 @@ function source_init(data::DataSoftSource, field::Field2D, t)
 end
 
 
-function source_init(data::DataSoftSource, field::Field3D, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = data
+# ------------------------------------------------------------------------------------------
+function source_init(source_data::SoftSourceData, field::Field3D, t)
+    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
     (; grid) = field
     (; Nx, Ny, Nz, x, y, z) = grid
 
@@ -126,18 +137,10 @@ function source_init(data::DataSoftSource, field::Field3D, t)
 end
 
 
-function add_source!(model, source::SoftSource, it)
-    (; field, t) = model
-    (; isrc, icomp, Amp, Phi, waveform, p) = source
-    FC = getfield(field, icomp)
-    @views @. FC[isrc] = FC[isrc] + Amp * waveform(t[it] - Phi, (p,))
-end
-
-
 # ******************************************************************************************
-# Hard
+# Hard Source
 # ******************************************************************************************
-struct DataHardSource{FG, FA, FP, FW, P, T, S}
+struct HardSourceData{FG, FA, FP, FW, P, T, S}
     geometry :: FG
     amplitude :: FA
     phase :: FP
@@ -169,16 +172,7 @@ function HardSource(;
             "a proper time delay"
         )
     end
-    return DataHardSource(geometry, amplitude, phase, waveform, p, frequency, component)
-end
-
-
-function source_init(data::DataHardSource, field, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = data
-    sdata = DataSoftSource(geometry, amplitude, phase, waveform, p, frequency, component)
-    ssource = source_init(sdata, field, t)
-    (; isrc, Amp, Phi, waveform, p, icomp) = ssource
-    return HardSource(isrc, Amp, Phi, waveform, p, icomp)
+    return HardSourceData(geometry, amplitude, phase, waveform, p, frequency, component)
 end
 
 
@@ -190,17 +184,26 @@ function add_source!(model, source::HardSource, it)
 end
 
 
+function source_init(source_data::HardSourceData, field, t)
+    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
+    sdata = SoftSourceData(geometry, amplitude, phase, waveform, p, frequency, component)
+    ssource = source_init(sdata, field, t)
+    (; isrc, Amp, Phi, waveform, p, icomp) = ssource
+    return HardSource(isrc, Amp, Phi, waveform, p, icomp)
+end
+
+
 # ******************************************************************************************
-# TFSF
+# TFSF Source
 # ******************************************************************************************
-struct DataTFSFSource{S, P}
+struct TFSFSourceData{S, P}
     fname :: S
     tfsf_box :: P
 end
 
 
 function TFSFSource(; fname)
-    return DataTFSFSource(fname, nothing)
+    return TFSFSourceData(fname, nothing)
 end
 
 
@@ -219,8 +222,8 @@ end
 @adapt_structure TFSFSource1D
 
 
-function source_init(data::DataTFSFSource, field::Field1D, t)
-    (; fname) = data
+function source_init(source_data::TFSFSourceData, field::Field1D, t)
+    (; fname) = source_data
     (; grid) = field
     (; z) = grid
 
@@ -305,8 +308,8 @@ end
 @adapt_structure TFSFSource2D
 
 
-function source_init(data::DataTFSFSource, field::Field2D, t)
-    (; fname) = data
+function source_init(source_data::TFSFSourceData, field::Field2D, t)
+    (; fname) = source_data
     (; grid) = field
     (; x, z) = grid
 
@@ -436,8 +439,8 @@ end
 @adapt_structure TFSFSource3D
 
 
-function source_init(data::DataTFSFSource, field::Field3D, t)
-    (; fname) = data
+function source_init(source_data::TFSFSourceData, field::Field3D, t)
+    (; fname) = source_data
     (; grid) = field
     (; x, y, z) = grid
 
@@ -648,7 +651,7 @@ function prepare_tfsf_record(model::Model1D, tfsf_box, tfsf_fname)
         HDF5.create_dataset(fp, "incEx_2", T, Nt)
     end
 
-    return DataTFSFSource(tfsf_fname, (iz1, iz2))
+    return TFSFSourceData(tfsf_fname, (iz1, iz2))
 end
 
 
@@ -700,7 +703,7 @@ function prepare_tfsf_record(model::Model2D, tfsf_box, tfsf_fname)
         HDF5.create_dataset(fp, "incEx_x2", T, (Nxi, Nt))
     end
 
-    return DataTFSFSource(tfsf_fname, (ix1, ix2, iz1, iz2))
+    return TFSFSourceData(tfsf_fname, (ix1, ix2, iz1, iz2))
 end
 
 
@@ -782,7 +785,7 @@ function prepare_tfsf_record(model::Model3D, tfsf_box, tfsf_fname)
         HDF5.create_dataset(fp, "incEy_xy2", T, (Nxi+1, Nyi, Nt))
     end
 
-    return DataTFSFSource(tfsf_fname, (ix1, ix2, iy1, iy2, iz1, iz2))
+    return TFSFSourceData(tfsf_fname, (ix1, ix2, iy1, iy2, iz1, iz2))
 end
 
 
