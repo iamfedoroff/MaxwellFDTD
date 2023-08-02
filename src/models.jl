@@ -72,10 +72,11 @@ end
 # ******************************************************************************************
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
-struct Model1D{F, S, P, T, R, A, AP}
+struct Model1D{F, S, P, M, T, R, A}
     field :: F
     source :: S
     pml :: P
+    material :: M
     # Time grid:
     Nt :: Int
     dt :: T
@@ -85,14 +86,6 @@ struct Model1D{F, S, P, T, R, A, AP}
     Me :: A
     Md1 :: A
     Md2 :: A
-    # Variables for ADE dispersion calculation:
-    dispersion :: Bool
-    Aq :: AP
-    Bq :: AP
-    Cq :: AP
-    Px :: AP
-    oldPx1 :: AP
-    oldPx2 :: AP
 end
 
 @adapt_structure Model1D
@@ -101,7 +94,7 @@ end
 function Model(
     grid::Grid1D, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0),
 )
-    (; Nz, dz, z) = grid
+    (; dz, z) = grid
 
     field = Field(grid)
 
@@ -114,42 +107,7 @@ function Model(
 
     pml = PML(z, pml_box, dt)
 
-    # Material processing:
-    if isnothing(material)
-        material = Material(geometry = z -> false)
-    end
-    (; geometry, eps, mu, sigma, chi) = material
-
-    # Permittivity, permeability, and conductivity:
-    eps = [geometry(z[iz]) ? eps : 1 for iz=1:Nz]
-    mu = [geometry(z[iz]) ? mu : 1 for iz=1:Nz]
-    sigma = [geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
-    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
-
-    # Variables for ADE dispersion calculation:
-    if isnothing(chi)
-        dispersion = false
-
-        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
-        Aq, Bq, Cq = (zeros(1) for i=1:3)
-        Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
-    else
-        dispersion = true
-
-        if chi isa Susceptibility
-            chi = (chi,)
-        end
-
-        Nq = length(chi)
-        Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
-        for iz=1:Nz, iq=1:Nq
-            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-            Aq[iq,iz] = geometry(z[iz]) * Aq0
-            Bq[iq,iz] = geometry(z[iz]) * Bq0
-            Cq[iq,iz] = geometry(z[iz]) * Cq0
-        end
-        Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
-    end
+    eps, mu, sigma, material = material_init(material, grid, dt)
 
     # Compensation for the numerical dispersion:
     # dt = t[2] - t[1]
@@ -160,17 +118,13 @@ function Model(
     # eps = @. sn * eps
     # mu = @. sn * mu
 
-
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
     Me = @. 1 / (EPS0*eps)
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    return Model1D(
-        field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-    )
+    return Model1D(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
@@ -217,9 +171,9 @@ end
 
 
 @kernel function update_E_kernel!(model::Model1D)
-    (; field, pml, Me, Md1, Md2) = model
-    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = model
+    (; field, pml, material, Me, Md1, Md2) = model
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
+    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
 
@@ -284,10 +238,11 @@ end
 # ******************************************************************************************
 # 2D
 # ******************************************************************************************
-struct Model2D{F, S, P, T, R, A, AP}
+struct Model2D{F, S, P, M, T, R, A}
     field :: F
     source :: S
     pml :: P
+    material :: M
     # Time grid:
     Nt :: Int
     dt :: T
@@ -297,17 +252,6 @@ struct Model2D{F, S, P, T, R, A, AP}
     Me :: A
     Md1 :: A
     Md2 :: A
-    # Variables for ADE dispersion calculation:
-    dispersion :: Bool
-    Aq :: AP
-    Bq :: AP
-    Cq :: AP
-    Px :: AP
-    oldPx1 :: AP
-    oldPx2 :: AP
-    Pz :: AP
-    oldPz1 :: AP
-    oldPz2 :: AP
 end
 
 @adapt_structure Model2D
@@ -316,7 +260,7 @@ end
 function Model(
     grid::Grid2D, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0,0,0),
 )
-    (; Nx, Nz, dx, dz, x, z) = grid
+    (; dx, dz, x, z) = grid
 
     field = Field(grid)
 
@@ -329,44 +273,7 @@ function Model(
 
     pml = PML(x, z, pml_box, dt)
 
-    # Material processing:
-    if isnothing(material)
-        material = Material(geometry = (x,z) -> false)
-    end
-    (; geometry, eps, mu, sigma, chi) = material
-
-    # Permittivity, permeability, and conductivity:
-    eps = [geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
-    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
-
-    # Variables for ADE dispersion calculation:
-    if isnothing(chi)
-        dispersion = false
-
-        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
-        Aq, Bq, Cq = (zeros(1) for i=1:3)
-        Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
-        Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
-    else
-        dispersion = true
-
-        if chi isa Susceptibility
-            chi = (chi,)
-        end
-
-        Nq = length(chi)
-        Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
-        for iz=1:Nz, ix=1:Nx, iq=1:Nq
-            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-            Aq[iq,ix,iz] = geometry(x[ix],z[iz]) * Aq0
-            Bq[iq,ix,iz] = geometry(x[ix],z[iz]) * Bq0
-            Cq[iq,ix,iz] = geometry(x[ix],z[iz]) * Cq0
-        end
-        Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
-        Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
-    end
+    eps, mu, sigma, material = material_init(material, grid, dt)
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
@@ -374,10 +281,7 @@ function Model(
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    return Model2D(
-        field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-    )
+    return Model2D(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
@@ -440,9 +344,9 @@ end
 
 
 @kernel function update_E_kernel!(model::Model2D)
-    (; field, pml, Me, Md1, Md2) = model
-    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = model
+    (; field, pml, material, Me, Md1, Md2) = model
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
+    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
@@ -533,10 +437,11 @@ end
 # ******************************************************************************************
 # 3D
 # ******************************************************************************************
-struct Model3D{F, S, P, T, R, A, AP}
+struct Model3D{F, S, P, M, T, R, A}
     field :: F
     source :: S
     pml :: P
+    material :: M
     # Time grid:
     Nt :: Int
     dt :: T
@@ -546,20 +451,6 @@ struct Model3D{F, S, P, T, R, A, AP}
     Me :: A
     Md1 :: A
     Md2 :: A
-    # Variables for ADE dispersion calculation:
-    dispersion :: Bool
-    Aq :: AP
-    Bq :: AP
-    Cq :: AP
-    Px :: AP
-    oldPx1 :: AP
-    oldPx2 :: AP
-    Py :: AP
-    oldPy1 :: AP
-    oldPy2 :: AP
-    Pz :: AP
-    oldPz1 :: AP
-    oldPz2 :: AP
 end
 
 @adapt_structure Model3D
@@ -568,7 +459,7 @@ end
 function Model(
     grid::Grid3D, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0,0,0,0,0),
 )
-    (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
+    (; dx, dy, dz, x, y, z) = grid
 
     field = Field(grid)
 
@@ -581,50 +472,7 @@ function Model(
 
     pml = PML(x, y, z, pml_box, dt)
 
-    # Material processing:
-    if isnothing(material)
-        material = Material(geometry = (x,y,z) -> false)
-        eps = 1
-        mu = 1
-        sigma = 0
-        chi = [nothing]
-    end
-    (; geometry, eps, mu, sigma, chi) = material
-
-    # Permittivity, permeability, and conductivity:
-    eps = [geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    mu = [geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    sigma = [geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
-
-    # Variables for ADE dispersion calculation:
-    if isnothing(chi)
-        dispersion = false
-
-        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
-        Aq, Bq, Cq = (zeros(1) for i=1:3)
-        Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
-        Py, oldPy1, oldPy2 = (zeros(1) for i=1:3)
-        Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
-    else
-        dispersion = true
-
-        if chi isa Susceptibility
-            chi = (chi,)
-        end
-
-        Nq = length(chi)
-        Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-        for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
-            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-            Aq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Aq0
-            Bq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Bq0
-            Cq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Cq0
-        end
-        Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-        Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-        Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-    end
+    eps, mu, sigma, material = material_init(material, grid, dt)
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
@@ -632,10 +480,7 @@ function Model(
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    return Model3D(
-        field, source, pml, Nt, dt, t, Mh, Me, Md1, Md2,
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-    )
+    return Model3D(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
@@ -747,13 +592,12 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_E_kernel!(
-    field::Field3D, pml, Me, Md1, Md2,
-    dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-)
+@kernel function update_E_kernel!(field::Field3D, pml, material, Me, Md1, Md2)
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
+    (; dispersion, Aq, Bq, Cq, Px,
+       oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
@@ -886,13 +730,8 @@ function update_E!(model::Model3D)
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, pml, Me, Md1, Md2, dispersion,
-       Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = model
-    update_E_kernel!(backend)(
-        field, pml, Me, Md1, Md2,
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2;
-        ndrange
-    )
+    (; field, pml, material, Me, Md1, Md2) = model
+    update_E_kernel!(backend)(field, pml, material, Me, Md1, Md2; ndrange)
     return nothing
 end
 
