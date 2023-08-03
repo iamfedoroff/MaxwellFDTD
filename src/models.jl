@@ -60,12 +60,12 @@ end
 
 function solve!(
     model; arch=CPU(), fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
-    tfsf_record=false, tfsf_box=nothing, tfsf_fname=nothing,
+    tfsf_record=false, tfsf_box=nothing, tfsf_fname=nothing, viewpoints=nothing,
 )
     model = adapt(arch, model)
     (; Nt, dt, t) = model
 
-    out = Output(model; fname, nstride, nframes, dtout)
+    out = Output(model; fname, nstride, nframes, dtout, viewpoints)
 
     if tfsf_record
         ext = splitext(out.fname)[end]
@@ -89,6 +89,7 @@ function solve!(
                 write_fields(out, model)
                 out.itout += 1
             end
+            write_viewpoints(out, model, it)
             calculate_output_variables!(out, model)
             if CUDA.functional()
                 synchronize()

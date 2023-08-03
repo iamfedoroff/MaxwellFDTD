@@ -1,8 +1,9 @@
-mutable struct Output{S, R, A}
+mutable struct Output{S, R, I, A}
     fname :: S
     itout :: Int
     Ntout :: Int
     tout :: R
+    ipts :: I   # coordinates of the observation points
     Sa :: A   # averaged poynting vector
 end
 
@@ -21,8 +22,9 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
+    viewpoints=nothing,
 ) where F <: Field1D
-    (; field, t) = model
+    (; field, Nt, t) = model
     (; grid, Ex) = field
     (; Nz, z) = grid
 
@@ -38,6 +40,19 @@ function Output(
         mkpath(dirname(fname))
     end
 
+    if !isnothing(viewpoints)
+        Np = length(viewpoints)
+        ipts = Vector{CartesianIndices}(undef, Np)
+        for (n, pt) in enumerate(viewpoints)
+            zpt = pt
+            izpt = argmin(abs.(z .- zpt))
+            ipts[n] = CartesianIndices((izpt:izpt,))
+        end
+        ipts = (ipts...,)   # Vector -> Tuple
+    else
+        ipts = nothing
+    end
+
     T = eltype(Ex)
 
     HDF5.h5open(fname, "w") do fp
@@ -45,11 +60,20 @@ function Output(
         fp["t"] = collect(tout)
         HDF5.create_dataset(fp, "Hy", T, (Nz, Ntout))
         HDF5.create_dataset(fp, "Ex", T, (Nz, Ntout))
+        if !isnothing(viewpoints)
+            fp["viewpoints/t"] = collect(t)
+            for n=1:Np
+                group = HDF5.create_group(fp, "viewpoints/$n")
+                group["point"] = collect(promote(viewpoints[n]...))
+                HDF5.create_dataset(group, "Hy", T, (Nt,))
+                HDF5.create_dataset(group, "Ex", T, (Nt,))
+            end
+        end
     end
 
     Sa = zero(Ex)
 
-    return Output(fname, itout, Ntout, tout, Sa)
+    return Output(fname, itout, Ntout, tout, ipts, Sa)
 end
 
 
@@ -60,6 +84,23 @@ function write_fields(out, model::Model{F}) where F <: Field1D
     HDF5.h5open(fname, "r+") do fp
         fp["Hy"][:,itout] = collect(Hy)
         fp["Ex"][:,itout] = collect(Ex)
+    end
+    return nothing
+end
+
+
+function write_viewpoints(out, model::Model{F}, it) where F <: Field1D
+    (; fname, ipts) = out
+    (; field) = model
+    (; Hy, Ex) = field
+    if !isnothing(ipts)
+        HDF5.h5open(fname, "r+") do fp
+            for (n, ipt) in enumerate(ipts)
+                group = fp["viewpoints/$n"]
+                group["Hy"][it] = collect(Hy[ipt])
+                group["Ex"][it] = collect(Ex[ipt])
+            end
+        end
     end
     return nothing
 end
@@ -79,8 +120,9 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
+    viewpoints=nothing,
 ) where F <: Field2D
-    (; field, t) = model
+    (; field, Nt, t) = model
     (; grid, Ex) = field
     (; Nx, Nz, x, z) = grid
 
@@ -96,6 +138,20 @@ function Output(
         mkpath(dirname(fname))
     end
 
+    if !isnothing(viewpoints)
+        Np = length(viewpoints)
+        ipts = Vector{CartesianIndices}(undef, Np)
+        for (n, pt) in enumerate(viewpoints)
+            xpt, zpt = pt
+            ixpt = argmin(abs.(x .- xpt))
+            izpt = argmin(abs.(z .- zpt))
+            ipts[n] = CartesianIndices((ixpt:ixpt, izpt:izpt))
+        end
+        ipts = (ipts...,)   # Vector -> Tuple
+    else
+        ipts = nothing
+    end
+
     T = eltype(Ex)
 
     HDF5.h5open(fname, "w") do fp
@@ -105,11 +161,21 @@ function Output(
         HDF5.create_dataset(fp, "Hy", T, (Nx, Nz, Ntout))
         HDF5.create_dataset(fp, "Ex", T, (Nx, Nz, Ntout))
         HDF5.create_dataset(fp, "Ez", T, (Nx, Nz, Ntout))
+        if !isnothing(viewpoints)
+            fp["viewpoints/t"] = collect(t)
+            for n=1:Np
+                group = HDF5.create_group(fp, "viewpoints/$n")
+                group["point"] = collect(promote(viewpoints[n]...))
+                HDF5.create_dataset(group, "Hy", T, (Nt,))
+                HDF5.create_dataset(group, "Ex", T, (Nt,))
+                HDF5.create_dataset(group, "Ez", T, (Nt,))
+            end
+        end
     end
 
     Sa = zero(Ex)
 
-    return Output(fname, itout, Ntout, tout, Sa)
+    return Output(fname, itout, Ntout, tout, ipts, Sa)
 end
 
 
@@ -121,6 +187,24 @@ function write_fields(out, model::Model{F}) where F <: Field2D
         fp["Hy"][:,:,itout] = collect(Hy)
         fp["Ex"][:,:,itout] = collect(Ex)
         fp["Ez"][:,:,itout] = collect(Ez)
+    end
+    return nothing
+end
+
+
+function write_viewpoints(out, model::Model{F}, it) where F <: Field2D
+    (; fname, ipts) = out
+    (; field) = model
+    (; Hy, Ex, Ez) = field
+    if !isnothing(ipts)
+        HDF5.h5open(fname, "r+") do fp
+            for (n, ipt) in enumerate(ipts)
+                group = fp["viewpoints/$n"]
+                group["Hy"][it] = collect(Hy[ipt])
+                group["Ex"][it] = collect(Ex[ipt])
+                group["Ez"][it] = collect(Ez[ipt])
+            end
+        end
     end
     return nothing
 end
@@ -140,8 +224,9 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
+    viewpoints=nothing,
 ) where F <: Field3D
-    (; field, t) = model
+    (; field, Nt, t) = model
     (; grid, Ex) = field
     (; Nx, Ny, Nz, x, y, z) = grid
 
@@ -157,6 +242,21 @@ function Output(
         mkpath(dirname(fname))
     end
 
+    if !isnothing(viewpoints)
+        Np = length(viewpoints)
+        ipts = Vector{CartesianIndices}(undef, Np)
+        for (n, pt) in enumerate(viewpoints)
+            xpt, ypt, zpt = pt
+            ixpt = argmin(abs.(x .- xpt))
+            iypt = argmin(abs.(y .- ypt))
+            izpt = argmin(abs.(z .- zpt))
+            ipts[n] = CartesianIndices((ixpt:ixpt, iypt:iypt, izpt:izpt))
+        end
+        ipts = (ipts...,)   # Vector -> Tuple
+    else
+        ipts = nothing
+    end
+
     T = eltype(Ex)
 
     HDF5.h5open(fname, "w") do fp
@@ -170,11 +270,24 @@ function Output(
         HDF5.create_dataset(fp, "Ex", T, (Nx, Ny, Nz, Ntout))
         HDF5.create_dataset(fp, "Ey", T, (Nx, Ny, Nz, Ntout))
         HDF5.create_dataset(fp, "Ez", T, (Nx, Ny, Nz, Ntout))
+        if !isnothing(viewpoints)
+            fp["viewpoints/t"] = collect(t)
+            for n=1:Np
+                group = HDF5.create_group(fp, "viewpoints/$n")
+                group["point"] = collect(promote(viewpoints[n]...))
+                HDF5.create_dataset(group, "Hx", T, (Nt,))
+                HDF5.create_dataset(group, "Hy", T, (Nt,))
+                HDF5.create_dataset(group, "Hz", T, (Nt,))
+                HDF5.create_dataset(group, "Ex", T, (Nt,))
+                HDF5.create_dataset(group, "Ey", T, (Nt,))
+                HDF5.create_dataset(group, "Ez", T, (Nt,))
+            end
+        end
     end
 
     Sa = zero(Ex)
 
-    return Output(fname, itout, Ntout, tout, Sa)
+    return Output(fname, itout, Ntout, tout, ipts, Sa)
 end
 
 
@@ -189,6 +302,27 @@ function write_fields(out, model::Model{F}) where F <: Field3D
         fp["Ex"][:,:,:,itout] = collect(Ex)
         fp["Ey"][:,:,:,itout] = collect(Ey)
         fp["Ez"][:,:,:,itout] = collect(Ez)
+    end
+    return nothing
+end
+
+
+function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
+    (; fname, ipts) = out
+    (; field) = model
+    (; Hx, Hy, Hz, Ex, Ey, Ez) = field
+    if !isnothing(ipts)
+        HDF5.h5open(fname, "r+") do fp
+            for (n, ipt) in enumerate(ipts)
+                group = fp["viewpoints/$n"]
+                group["Hx"][it] = collect(Hx[ipt])
+                group["Hy"][it] = collect(Hy[ipt])
+                group["Hz"][it] = collect(Hz[ipt])
+                group["Ex"][it] = collect(Ex[ipt])
+                group["Ey"][it] = collect(Ey[ipt])
+                group["Ez"][it] = collect(Ez[ipt])
+            end
+        end
     end
     return nothing
 end
