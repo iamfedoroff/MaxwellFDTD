@@ -65,22 +65,16 @@ function solve!(
     model = adapt(arch, model)
     (; Nt, dt, t) = model
 
-    if isnothing(fname)
-        fname = default_fname(model)
-    end
+    out = Output(model; fname, nstride, nframes, dtout)
 
     if tfsf_record
-        if isnothing(tfsf_fname)
-            ext = splitext(fname)[end]
-            tfsf_fname = replace(fname, ext => "_tfsf" * ext)
-        end
+        ext = splitext(out.fname)[end]
+        tfsf_fname = replace(out.fname, ext => "_tfsf" * ext)
         if !isdir(dirname(tfsf_fname))
             mkpath(dirname(tfsf_fname))
         end
         tfsf_data = prepare_tfsf_record(model, tfsf_box, tfsf_fname)
     end
-
-    out = Output(model; fname, nstride, nframes, dtout)
 
     @showprogress 1 for it=1:Nt
         @timeit "model step" begin
@@ -92,10 +86,10 @@ function solve!(
 
         @timeit "output" begin
             if (out.itout <= out.Ntout) && (abs(t[it] - out.tout[out.itout]) <= dt/2)
-                write_output!(out, model)
+                write_fields(out, model)
                 out.itout += 1
             end
-            update_output_variables(out, model)
+            calculate_output_variables!(out, model)
             if CUDA.functional()
                 synchronize()
             end
@@ -110,7 +104,7 @@ function solve!(
         end
     end
 
-    write_output_values(out, model)
+    write_output_variables(out)
 
     print_timer()
 
