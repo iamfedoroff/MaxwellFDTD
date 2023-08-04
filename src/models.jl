@@ -42,7 +42,7 @@ function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0))
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
+    Me = @. EPS0*eps
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
@@ -125,11 +125,11 @@ end
     iz = @index(Global)
 
     @inbounds begin
-        # derivatives E:
+        # derivatives E ....................................................................
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
         dExz = (Ex[izp1] - Ex[iz]) / dz
 
-        # apply CPML:
+        # apply CPML .......................................................................
         if iz <= zlayer1.ind   # z left layer [1:iz1]
             (; K, A, B) = zlayer1
             izpml = iz
@@ -145,7 +145,7 @@ end
             dExz = dExz / K[izpml]
         end
 
-        # update H:
+        # update H .........................................................................
         Hy[iz] -= Mh[iz] * (0 + dExz)
     end
 end
@@ -162,17 +162,18 @@ end
     (; field, pml, material, Me, Md1, Md2) = model
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
+    (; kerr, Mk) = material
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
 
     iz = @index(Global)
 
     @inbounds begin
-        # derivatives H:
+        # derivatives H ....................................................................
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
         dHyz = (Hy[iz] - Hy[izm1]) / dz
 
-        # apply CPML:
+        # apply CPML .......................................................................
         if iz <= zlayer1.ind   # z left layer [1:iz1]
             (; K, A, B) = zlayer1
             izpml = iz
@@ -188,10 +189,10 @@ end
             dHyz = dHyz / K[izpml]
         end
 
-        # update D:
+        # update D .........................................................................
         Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz)
 
-        # update P:
+        # update P .........................................................................
         sumPx = zero(eltype(Ex))
         if dispersion
             Nq = size(Px, 1)
@@ -205,13 +206,72 @@ end
             end
         end
 
-        # update E:
-        Ex[iz] = Me[iz] * (Dx[iz] - sumPx)
+        # Plasma current ...................................................................
+        # (; dt) = model
+        # (; rho, Ppx, oldPpx1, oldPpx2) = material
+        # nuc = 5e12
+        # Ap = 2 / (nuc*dt/2 + 1)
+        # Bp = (nuc*dt/2 - 1) / (nuc*dt/2 + 1)
+        # Cp = QE^2/ME*dt^2 / (nuc*dt/2 + 1)
 
+        # oldPpx2[iz] = oldPpx1[iz]
+        # oldPpx1[iz] = Ppx[iz]
+        # Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz] * Ex[iz]
+        # sumPx += Ppx[iz]
+
+
+        # Multi-photon losses ..............................................................
+        # (; dt) = model
+        # (; Pax, drho) = material
+        # lam0 = 2e-6   # (m) wavelength
+        # w0 = 2*pi * C0 / lam0   # frequency
+        # Ui = 12.063 * QE
+        # Wph = HBAR * w0
+        # K = ceil(Ui / Wph)
+
+        # II = abs2(Ex[iz])
+        # if II >= 1e-30
+        #     invII = 1 / II
+        # else
+        #     invII = 0
+        # end
+        # Pax[iz] = Pax[iz] + K*Wph * dt * drho[iz] * Ex[iz] * invII
+        # sumPx += Pax[iz]
+
+
+        # Plasma ...........................................................................
+        # (; dt) = model
+        # (; rho, drho) = material
+        # # rho0 = 2.5e25   # [1/m^3] neutrals density
+        # rho0 = 2.1e28
+        # ionrate(I) = 8.85e-105 * I^6.5
+
+        # II = 1 * EPS0 * C0 / 2 * abs2(Ex[iz])
+        # RI = ionrate(II)
+        # rho[iz] = rho0 - (rho0 - rho[iz]) * exp(-RI * dt)
+        # drho[iz] = RI * (rho0 - rho[iz])
+
+
+        # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
+        DmPx = Dx[iz] - sumPx
+
+        if kerr
+            # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
+            # Ex[iz] = DmPx / (Me[iz] + Mk[iz] * Ex[iz]^2)
+
+            # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
+            # Ex[iz] = (DmPx + 2*Mk[iz] * Ex[iz]^3) / (Me[iz] + 3*Mk[iz] * Ex[iz]^2)
+
+            # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
+            Ex[iz] = (1 + 2*Mk[iz] / Me[iz]^3 * DmPx^2) /
+                     (1 + 3*Mk[iz] / Me[iz]^3 * DmPx^2) * DmPx / Me[iz]
+        else
+            Ex[iz] = DmPx / Me[iz]
+        end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[iz] += dt * Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
+        # Ex[iz] += dt / Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
     end
 end
 function update_E!(model::Model{F}) where F <: Field1D
@@ -235,13 +295,13 @@ end
     ix, iz = @index(Global, NTuple)
 
     @inbounds begin
-        # derivatives E:
+        # derivatives E ....................................................................
         ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
         dExz = (Ex[ix,izp1] - Ex[ix,iz]) / dz
         dEzx = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
 
-        # apply CPML:
+        # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
             (; K, A, B) = xlayer1
             ixpml = ix
@@ -271,7 +331,7 @@ end
             dExz = dExz / K[izpml]
         end
 
-        # update H:
+        # update H .........................................................................
         Hy[ix,iz] -= Mh[ix,iz] * (dExz - dEzx)
     end
 end
@@ -288,19 +348,20 @@ end
     (; field, pml, material, Me, Md1, Md2) = model
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
+    (; kerr, Mk) = material
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
 
     ix, iz = @index(Global, NTuple)
 
     @inbounds begin
-        # derivatives H:
+        # derivatives H ....................................................................
         ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
         dHyx = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
         dHyz = (Hy[ix,iz] - Hy[ix,izm1]) / dz
 
-        # apply CPML:
+        # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
             (; K, A, B) = xlayer1
             ixpml = ix
@@ -330,11 +391,11 @@ end
             dHyz = dHyz / K[izpml]
         end
 
-        # update D:
+        # update D .........................................................................
         Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] + Md2[ix,iz] * (0 - dHyz)
         Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx - 0)
 
-        # update P:
+        # update P .........................................................................
         sumPx = zero(eltype(Ex))
         sumPz = zero(eltype(Ez))
         if dispersion
@@ -355,15 +416,35 @@ end
             end
         end
 
-        # update E:
-        Ex[ix,iz] = Me[ix,iz] * (Dx[ix,iz] - sumPx)
-        Ez[ix,iz] = Me[ix,iz] * (Dz[ix,iz] - sumPz)
+        # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
+        DmPx = Dx[ix,iz] - sumPx
+        DmPz = Dz[ix,iz] - sumPz
 
+        if kerr
+            # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
+            # Ex[ix,iz] = DmPx / (Me[ix,iz] + Mk[ix,iz] * Ex[ix,iz]^2)
+            # Ez[ix,iz] = DmPz / (Me[ix,iz] + Mk[ix,iz] * Ez[ix,iz]^2)
+
+            # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
+            # Ex[ix,iz] = (DmPx + 2*Mk[ix,iz] * Ex[ix,iz]^3) /
+            #             (Me[ix,iz] + 3*Mk[ix,iz] * Ex[ix,iz]^2)
+            # Ez[ix,iz] = (DmPz + 2*Mk[ix,iz] * Ez[ix,iz]^3) /
+            #             (Me[ix,iz] + 3*Mk[ix,iz] * Ez[ix,iz]^2)
+
+            # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
+            Ex[ix,iz] = (1 + 2*Mk[ix,iz] / Me[ix,iz]^3 * DmPx^2) /
+                        (1 + 3*Mk[ix,iz] / Me[ix,iz]^3 * DmPx^2) * DmPx / Me[ix,iz]
+            Ez[ix,iz] = (1 + 2*Mk[ix,iz] / Me[ix,iz]^3 * DmPz^2) /
+                        (1 + 3*Mk[ix,iz] / Me[ix,iz]^3 * DmPz^2) * DmPz / Me[ix,iz]
+        else
+            Ex[ix,iz] = DmPx / Me[ix,iz]
+            Ez[ix,iz] = DmPz / Me[ix,iz]
+        end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
-        # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
+        # Ex[ix,iz] += dt / Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
+        # Ez[ix,iz] += dt / Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
     end
 end
 function update_E!(model::Model{F}) where F <: Field2D
@@ -391,7 +472,7 @@ end
     ix, iy, iz = @index(Global, NTuple)
 
     @inbounds begin
-        # derivatives E:
+        # derivatives E ....................................................................
         ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
         iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
@@ -402,7 +483,7 @@ end
         dEzx = (Ez[ixp1,iy,iz] - Ez[ix,iy,iz]) / dx
         dEzy = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
 
-        # apply CPML:
+        # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
             (; K, A, B) = xlayer1
             ixpml = ix
@@ -464,7 +545,7 @@ end
             dEyz = dEyz / K[izpml]
         end
 
-        # update H:
+        # update H .........................................................................
         Hx[ix,iy,iz] -= Mh[ix,iy,iz] * (dEzy - dEyz)
         Hy[ix,iy,iz] -= Mh[ix,iy,iz] * (dExz - dEzx)
         Hz[ix,iy,iz] -= Mh[ix,iy,iz] * (dEyx - dExy)
@@ -492,13 +573,14 @@ end
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px,
        oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
+    (; kerr, Mk) = material
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
 
     ix, iy, iz = @index(Global, NTuple)
 
     @inbounds begin
-        # derivatives H:
+        # derivatives H ....................................................................
         ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
         iy == 1 ? iym1 = Ny : iym1 = iy - 1
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
@@ -509,7 +591,7 @@ end
         dHzx = (Hz[ix,iy,iz] - Hz[ixm1,iy,iz]) / dx
         dHzy = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
 
-        # apply CPML:
+        # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
             (; K, A, B) = xlayer1
             ixpml = ix
@@ -571,12 +653,12 @@ end
             dHyz = dHyz / K[izpml]
         end
 
-        # update D:
+        # update D .........................................................................
         Dx[ix,iy,iz] = Md1[ix,iy,iz] * Dx[ix,iy,iz] + Md2[ix,iy,iz] * (dHzy - dHyz)
         Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] + Md2[ix,iy,iz] * (dHxz - dHzx)
         Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] + Md2[ix,iy,iz] * (dHyx - dHxy)
 
-        # update P:
+        # update P .........................................................................
         sumPx = zero(eltype(Ex))
         sumPy = zero(eltype(Ey))
         sumPz = zero(eltype(Ez))
@@ -604,17 +686,46 @@ end
             end
         end
 
-        # update E:
-        Ex[ix,iy,iz] = Me[ix,iy,iz] * (Dx[ix,iy,iz] - sumPx)
-        Ey[ix,iy,iz] = Me[ix,iy,iz] * (Dy[ix,iy,iz] - sumPy)
-        Ez[ix,iy,iz] = Me[ix,iy,iz] * (Dz[ix,iy,iz] - sumPz)
+        # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
+        DmPx = Dx[ix,iy,iz] - sumPx
+        DmPy = Dy[ix,iy,iz] - sumPy
+        DmPz = Dz[ix,iy,iz] - sumPz
 
+        if kerr
+            # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
+            # Ex[ix,iy,iz] = DmPx / (Me[ix,iy,iz] + Mk[ix,iy,iz] * Ex[ix,iy,iz]^2)
+            # Ey[ix,iy,iz] = DmPy / (Me[ix,iy,iz] + Mk[ix,iy,iz] * Ey[ix,iy,iz]^2)
+            # Ez[ix,iy,iz] = DmPz / (Me[ix,iy,iz] + Mk[ix,iy,iz] * Ez[ix,iy,iz]^2)
+
+            # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
+            # Ex[ix,iy,iz] = (DmPx + 2*Mk[ix,iy,iz] * Ex[ix,iy,iz]^3) /
+            #                (Me[ix,iy,iz] + 3*Mk[ix,iy,iz] * Ex[ix,iy,iz]^2)
+            # Ey[ix,iy,iz] = (DmPy + 2*Mk[ix,iy,iz] * Ey[ix,iy,iz]^3) /
+            #                (Me[ix,iy,iz] + 3*Mk[ix,iy,iz] * Ey[ix,iy,iz]^2)
+            # Ez[ix,iy,iz] = (DmPz + 2*Mk[ix,iy,iz] * Ez[ix,iy,iz]^3) /
+            #                (Me[ix,iy,iz] + 3*Mk[ix,iy,iz] * Ez[ix,iy,iz]^2)
+
+            # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
+            Ex[ix,iy,iz] = (1 + 2*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPx^2) /
+                           (1 + 3*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPx^2) *
+                           DmPx / Me[ix,iy,iz]
+            Ey[ix,iy,iz] = (1 + 2*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPy^2) /
+                           (1 + 3*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPy^2) *
+                           DmPy / Me[ix,iy,iz]
+            Ez[ix,iy,iz] = (1 + 2*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPz^2) /
+                           (1 + 3*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPz^2) *
+                           DmPz / Me[ix,iy,iz]
+        else
+            Ex[ix,iy,iz] = DmPx / Me[ix,iy,iz]
+            Ey[ix,iy,iz] = DmPy / Me[ix,iy,iz]
+            Ez[ix,iy,iz] = DmPz / Me[ix,iy,iz]
+        end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
-        # Ey[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
-        # Ez[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
+        # Ex[ix,iy,iz] += dt / Me[ix,iy,iz] * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
+        # Ey[ix,iy,iz] += dt / Me[ix,iy,iz] * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
+        # Ez[ix,iy,iz] += dt / Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
     end
 end
 function update_E!(model::Model{F}) where F <: Field3D

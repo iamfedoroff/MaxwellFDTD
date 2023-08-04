@@ -60,6 +60,7 @@ function Output(
         fp["t"] = collect(tout)
         HDF5.create_dataset(fp, "Hy", T, (Nz, Ntout))
         HDF5.create_dataset(fp, "Ex", T, (Nz, Ntout))
+        # HDF5.create_dataset(fp, "rho", T, (Nz, Ntout))
         if !isnothing(viewpoints)
             fp["viewpoints/t"] = collect(t)
             for n=1:Np
@@ -78,12 +79,14 @@ end
 
 
 function write_fields(out, model::Model{F}) where F <: Field1D
-    (; field) = model
+    (; field, material) = model
     (; Hy, Ex) = field
+    # (; rho) = material
     (; fname, itout) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Hy"][:,itout] = collect(Hy)
         fp["Ex"][:,itout] = collect(Ex)
+        # fp["rho"][:,itout] = collect(rho)
     end
     return nothing
 end
