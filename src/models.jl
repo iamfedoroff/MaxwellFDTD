@@ -159,12 +159,13 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
-    (; field, pml, material, Me, Md1, Md2) = model
+    (; field, pml, material, dt, Me, Md1, Md2) = model
+    (; grid, Hy, Dx, Ex) = field
+    (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
     (; kerr, Mk) = material
-    (; grid, Hy, Dx, Ex) = field
-    (; Nz, dz) = grid
+    (; plasma, rho0, ionrate, rho, drho) = material
 
     iz = @index(Global)
 
@@ -240,17 +241,12 @@ end
 
 
         # Plasma ...........................................................................
-        # (; dt) = model
-        # (; rho, drho) = material
-        # # rho0 = 2.5e25   # [1/m^3] neutrals density
-        # rho0 = 2.1e28
-        # ionrate(I) = 8.85e-105 * I^6.5
-
-        # II = 1 * EPS0 * C0 / 2 * abs2(Ex[iz])
-        # RI = ionrate(II)
-        # rho[iz] = rho0 - (rho0 - rho[iz]) * exp(-RI * dt)
-        # drho[iz] = RI * (rho0 - rho[iz])
-
+        if plasma
+            II = 1 * EPS0 * C0 / 2 * abs2(Ex[iz])
+            RI = ionrate(II)
+            rho[iz] = rho0 - (rho0 - rho[iz]) * exp(-RI * dt)
+            drho[iz] = RI * (rho0 - rho[iz])
+        end
 
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
         DmPx = Dx[iz] - sumPx
@@ -345,12 +341,13 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
-    (; field, pml, material, Me, Md1, Md2) = model
+    (; field, pml, material, dt, Me, Md1, Md2) = model
+    (; grid, Hy, Dx, Dz, Ex, Ez) = field
+    (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
     (; kerr, Mk) = material
-    (; grid, Hy, Dx, Dz, Ex, Ez) = field
-    (; Nx, Nz, dx, dz) = grid
+    (; plasma, rho0, ionrate, rho, drho) = material
 
     ix, iz = @index(Global, NTuple)
 
@@ -414,6 +411,14 @@ end
                 sumPx += Px[iq,ix,iz]
                 sumPz += Pz[iq,ix,iz]
             end
+        end
+
+        # Plasma ...........................................................................
+        if plasma
+            II = 1 * EPS0 * C0 / 2 * (abs2(Ex[ix,iz]) + abs2(Ez[ix,iz]))
+            RI = ionrate(II)
+            rho[ix,iz] = rho0 - (rho0 - rho[ix,iz]) * exp(-RI * dt)
+            drho[ix,iz] = RI * (rho0 - rho[ix,iz])
         end
 
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
@@ -567,15 +572,16 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_E_kernel!(field::Field3D, pml, material, Me, Md1, Md2)
+@kernel function update_E_kernel!(field::Field3D, pml, material, dt, Me, Md1, Md2)
+    (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
+    (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px,
        oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
     (; kerr, Mk) = material
-    (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
-    (; Nx, Ny, Nz, dx, dy, dz) = grid
+    (; plasma, rho0, ionrate, rho, drho) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
@@ -686,6 +692,15 @@ end
             end
         end
 
+        # Plasma ...........................................................................
+        if plasma
+            II = 1 * EPS0 * C0 / 2 *
+                 (abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz]))
+            RI = ionrate(II)
+            rho[ix,iy,iz] = rho0 - (rho0 - rho[ix,iy,iz]) * exp(-RI * dt)
+            drho[ix,iy,iz] = RI * (rho0 - rho[ix,iy,iz])
+        end
+
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
         DmPx = Dx[ix,iy,iz] - sumPx
         DmPy = Dy[ix,iy,iz] - sumPy
@@ -735,8 +750,8 @@ function update_E!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, pml, material, Me, Md1, Md2) = model
-    update_E_kernel!(backend)(field, pml, material, Me, Md1, Md2; ndrange)
+    (; field, pml, material, dt, Me, Md1, Md2) = model
+    update_E_kernel!(backend)(field, pml, material, dt, Me, Md1, Md2; ndrange)
     return nothing
 end
 

@@ -1,23 +1,38 @@
-struct MaterialData{G, T, C, C3}
+struct MaterialData{G, T, C, C3, P}
     geometry :: G
     eps :: T
     mu :: T
     sigma :: T
     chi :: C
     chi3 :: C3
+    plasma_data :: P
 end
 
 
-function Material(; geometry, eps=1, mu=1, sigma=0, chi=nothing, chi3=nothing)
+function Material(;
+    geometry, eps=1, mu=1, sigma=0, chi=nothing, chi3=nothing, plasma=nothing,
+)
     eps, mu, sigma = promote(eps, mu, sigma)
-    return MaterialData(geometry, eps, mu, sigma, chi, chi3)
+    return MaterialData(geometry, eps, mu, sigma, chi, chi3, plasma)
+end
+
+
+# ******************************************************************************************
+struct PlasmaData{T, F}
+    rho0 :: T
+    ionrate :: F
+end
+
+
+function Plasma(; rho0, ionrate)
+    return PlasmaData(rho0, ionrate)
 end
 
 
 # ******************************************************************************************
 # Materials
 # ******************************************************************************************
-struct Material1D{A, B}
+struct Material1D{A, B, C, T, F}
     # Linear dispersion:
     dispersion :: Bool
     Aq :: A
@@ -30,8 +45,11 @@ struct Material1D{A, B}
     kerr :: Bool
     Mk :: B
     # Plasma:
-    # rho :: B
-    # drho :: B
+    plasma :: Bool
+    rho0 :: T
+    ionrate :: F
+    rho :: C   # electron density
+    drho :: C   # time derivative of electron density
     # Ppx :: B
     # oldPpx1 :: B
     # oldPpx2 :: B
@@ -45,7 +63,7 @@ function material_init(material_data, grid::Grid1D, dt)
     if isnothing(material_data)
         material_data = Material(geometry = z -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi3) = material_data
+    (; geometry, eps, mu, sigma, chi, chi3, plasma_data) = material_data
     (; Nz, z) = grid
 
     # Permittivity, permeability, and conductivity:
@@ -88,22 +106,32 @@ function material_init(material_data, grid::Grid1D, dt)
         Mk = [geometry(z[iz]) ? EPS0*chi3 : 0 for iz=1:Nz]
     end
 
-    # rho = zeros(Nz)   # electron density
-    # drho = zeros(Nz)   # derivative of electron density
-    # Ppx, oldPpx1, oldPpx2 = (zeros(Nz) for i=1:3)   # plasma current
-    # Pax = zeros(Nz)   # multiphoton losses
+    # Plasma:
+    if isnothing(plasma_data)
+        plasma = false
+        rho0 = nothing
+        ionrate = identity
+        rho, drho = zeros(1), zeros(1)
+    else
+        plasma = true
+        (; rho0, ionrate) = plasma_data
+        rho, drho = zeros(Nz), zeros(Nz)
+        # Ppx, oldPpx1, oldPpx2 = (zeros(Nz) for i=1:3)   # plasma current
+        # Pax = zeros(Nz)   # multiphoton losses
+    end
 
     material = Material1D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
         kerr, Mk,
-        # rho, drho, Ppx, oldPpx1, oldPpx2, Pax,
+        plasma, rho0, ionrate, rho, drho,
+        # Ppx, oldPpx1, oldPpx2, Pax,
     )
     return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material2D{A, B}
+struct Material2D{A, B, C, T, F}
     # Linear dispersion:
     dispersion :: Bool
     Aq :: A
@@ -118,6 +146,12 @@ struct Material2D{A, B}
     # Kerr:
     kerr :: Bool
     Mk :: B
+    # Plasma:
+    plasma :: Bool
+    rho0 :: T
+    ionrate :: F
+    rho :: C   # electron density
+    drho :: C   # time derivative of electron density
 end
 
 @adapt_structure Material2D
@@ -127,7 +161,7 @@ function material_init(material_data, grid::Grid2D, dt)
     if isnothing(material_data)
         material_data = Material(geometry = (x,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi3) = material_data
+    (; geometry, eps, mu, sigma, chi, chi3, plasma_data) = material_data
     (; Nx, Nz, x, z) = grid
 
     # Permittivity, permeability, and conductivity:
@@ -172,16 +206,29 @@ function material_init(material_data, grid::Grid2D, dt)
         Mk = [geometry(x[ix],z[iz]) ? EPS0*chi3 : 0 for ix=1:Nx, iz=1:Nz]
     end
 
+    # Plasma:
+    if isnothing(plasma_data)
+        plasma = false
+        rho0 = nothing
+        ionrate = identity
+        rho, drho = zeros(1), zeros(1)
+    else
+        plasma = true
+        (; rho0, ionrate) = plasma_data
+        rho, drho = zeros(Nx,Nz), zeros(Nx,Nz)
+    end
+
     material = Material2D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
         kerr, Mk,
+        plasma, rho0, ionrate, rho, drho,
     )
     return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material3D{A, B}
+struct Material3D{A, B, C, T, F}
     # Linear dispersion:
     dispersion :: Bool
     Aq :: A
@@ -199,6 +246,12 @@ struct Material3D{A, B}
     # Kerr:
     kerr :: Bool
     Mk :: B
+    # Plasma:
+    plasma :: Bool
+    rho0 :: T
+    ionrate :: F
+    rho :: C   # electron density
+    drho :: C   # time derivative of electron density
 end
 
 @adapt_structure Material3D
@@ -208,7 +261,7 @@ function material_init(material_data, grid::Grid3D, dt)
     if isnothing(material_data)
         material_data = Material(geometry = (x,y,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi3) = material_data
+    (; geometry, eps, mu, sigma, chi, chi3, plasma_data) = material_data
     (; Nx, Ny, Nz, x, y, z) = grid
 
     # Permittivity, permeability, and conductivity:
@@ -255,9 +308,22 @@ function material_init(material_data, grid::Grid3D, dt)
         Mk = [geometry(x[ix],y[iy],z[iz]) ? EPS0*chi3 : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     end
 
+    # Plasma:
+    if isnothing(plasma_data)
+        plasma = false
+        rho0 = nothing
+        ionrate = identity
+        rho, drho = zeros(1), zeros(1)
+    else
+        plasma = true
+        (; rho0, ionrate) = plasma_data
+        rho, drho = zeros(Nx,Ny,Nz), zeros(Nx,Ny,Nz)
+    end
+
     material = Material3D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
         kerr, Mk,
+        plasma, rho0, ionrate, rho, drho,
     )
     return eps, mu, sigma, material
 end

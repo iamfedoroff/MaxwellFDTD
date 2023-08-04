@@ -11,7 +11,8 @@ import TimerOutputs: @timeit, reset_timer!, print_timer
 
 
 export CPU, GPU, Grid1D, Grid2D, Grid3D, SoftSource, HardSource, TFSFSource, solve!, Model,
-       Material, DebyeSusceptibility, DrudeSusceptibility, LorentzSusceptibility, CPML
+       Material, DebyeSusceptibility, DrudeSusceptibility, LorentzSusceptibility, Plasma,
+       CPML
 
 
 using PhysicalConstants.CODATA2018
