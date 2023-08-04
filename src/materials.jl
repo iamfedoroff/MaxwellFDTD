@@ -19,13 +19,23 @@ end
 
 # ******************************************************************************************
 struct PlasmaData{T, F}
-    rho0 :: T
     ionrate :: F
+    rho0 :: T
+    nuc :: T
 end
 
 
-function Plasma(; rho0, ionrate)
-    return PlasmaData(rho0, ionrate)
+function Plasma(; ionrate, rho0, nuc=0)
+    rho0, nuc = promote(rho0, nuc)
+    return PlasmaData(ionrate, rho0, nuc)
+end
+
+
+function ade_plasma_coefficients(nuc, dt)
+    Ap = 2 / (nuc*dt/2 + 1)
+    Bp = (nuc*dt/2 - 1) / (nuc*dt/2 + 1)
+    Cp = QE^2/ME*dt^2 / (nuc*dt/2 + 1)
+    return Ap, Bp, Cp
 end
 
 
@@ -50,10 +60,13 @@ struct Material1D{A, B, C, T, F}
     ionrate :: F
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
-    # Ppx :: B
-    # oldPpx1 :: B
-    # oldPpx2 :: B
-    # Pax :: B
+    Ap :: T
+    Bp :: T
+    Cp :: T
+    Ppx :: C
+    oldPpx1 :: C
+    oldPpx2 :: C
+    # Pax :: C
 end
 
 @adapt_structure Material1D
@@ -109,22 +122,20 @@ function material_init(material_data, grid::Grid1D, dt)
     # Plasma:
     if isnothing(plasma_data)
         plasma = false
-        rho0 = nothing
         ionrate = identity
-        rho, drho = zeros(1), zeros(1)
+        rho0, nuc, Ap, Bp, Cp = (0.0 for i=1:5)
+        rho, drho, Ppx, oldPpx1, oldPpx2 = (zeros(1) for i=1:5)
     else
         plasma = true
-        (; rho0, ionrate) = plasma_data
-        rho, drho = zeros(Nz), zeros(Nz)
-        # Ppx, oldPpx1, oldPpx2 = (zeros(Nz) for i=1:3)   # plasma current
-        # Pax = zeros(Nz)   # multiphoton losses
+        (; ionrate, rho0, nuc) = plasma_data
+        Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
+        rho, drho, Ppx, oldPpx1, oldPpx2 = (zeros(Nz) for i=1:5)
     end
 
     material = Material1D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-        kerr, Mk,
-        plasma, rho0, ionrate, rho, drho,
-        # Ppx, oldPpx1, oldPpx2, Pax,
+        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2,
+        # Pax,
     )
     return eps, mu, sigma, material
 end
@@ -152,6 +163,15 @@ struct Material2D{A, B, C, T, F}
     ionrate :: F
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
+    Ap :: T
+    Bp :: T
+    Cp :: T
+    Ppx :: C
+    oldPpx1 :: C
+    oldPpx2 :: C
+    Ppz :: C
+    oldPpz1 :: C
+    oldPpz2 :: C
 end
 
 @adapt_structure Material2D
@@ -209,19 +229,20 @@ function material_init(material_data, grid::Grid2D, dt)
     # Plasma:
     if isnothing(plasma_data)
         plasma = false
-        rho0 = nothing
         ionrate = identity
-        rho, drho = zeros(1), zeros(1)
+        rho0, nuc, Ap, Bp, Cp = (0.0 for i=1:5)
+        rho, drho, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2 = (zeros(1) for i=1:8)
     else
         plasma = true
-        (; rho0, ionrate) = plasma_data
-        rho, drho = zeros(Nx,Nz), zeros(Nx,Nz)
+        (; ionrate, rho0, nuc) = plasma_data
+        Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
+        rho, drho, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2 = (zeros(Nx,Nz) for i=1:8)
     end
 
     material = Material2D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-        kerr, Mk,
-        plasma, rho0, ionrate, rho, drho,
+        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2,
     )
     return eps, mu, sigma, material
 end
@@ -252,6 +273,18 @@ struct Material3D{A, B, C, T, F}
     ionrate :: F
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
+    Ap :: T
+    Bp :: T
+    Cp :: T
+    Ppx :: C
+    oldPpx1 :: C
+    oldPpx2 :: C
+    Ppy :: C
+    oldPpy1 :: C
+    oldPpy2 :: C
+    Ppz :: C
+    oldPpz1 :: C
+    oldPpz2 :: C
 end
 
 @adapt_structure Material3D
@@ -311,19 +344,26 @@ function material_init(material_data, grid::Grid3D, dt)
     # Plasma:
     if isnothing(plasma_data)
         plasma = false
-        rho0 = nothing
         ionrate = identity
-        rho, drho = zeros(1), zeros(1)
+        rho0, nuc, Ap, Bp, Cp = (0.0 for i=1:5)
+        rho, drho = (zeros(1) for i=1:2)
+        Ppx, oldPpx1, oldPpx2 = (zeros(1) for i=1:3)
+        Ppy, oldPpy1, oldPpy2 = (zeros(1) for i=1:3)
+        Ppz, oldPpz1, oldPpz2 = (zeros(1) for i=1:3)
     else
         plasma = true
-        (; rho0, ionrate) = plasma_data
-        rho, drho = zeros(Nx,Ny,Nz), zeros(Nx,Ny,Nz)
+        (; rho0, ionrate, nuc) = plasma_data
+        Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
+        rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
+        Ppx, oldPpx1, oldPpx2 = (zeros(Nx,Ny,Nz) for i=1:3)
+        Ppy, oldPpy1, oldPpy2 = (zeros(Nx,Ny,Nz) for i=1:3)
+        Ppz, oldPpz1, oldPpz2 = (zeros(Nx,Ny,Nz) for i=1:3)
     end
 
     material = Material3D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-        kerr, Mk,
-        plasma, rho0, ionrate, rho, drho,
+        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+        Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
     )
     return eps, mu, sigma, material
 end

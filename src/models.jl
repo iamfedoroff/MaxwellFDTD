@@ -163,9 +163,9 @@ end
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
-    (; kerr, Mk) = material
-    (; plasma, rho0, ionrate, rho, drho) = material
+    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
+       kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+       Ppx, oldPpx1, oldPpx2) = material
 
     iz = @index(Global)
 
@@ -195,6 +195,7 @@ end
 
         # update P .........................................................................
         sumPx = zero(eltype(Ex))
+
         if dispersion
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -207,41 +208,33 @@ end
             end
         end
 
-        # Plasma current ...................................................................
-        # (; dt) = model
-        # (; rho, Ppx, oldPpx1, oldPpx2) = material
-        # nuc = 5e12
-        # Ap = 2 / (nuc*dt/2 + 1)
-        # Bp = (nuc*dt/2 - 1) / (nuc*dt/2 + 1)
-        # Cp = QE^2/ME*dt^2 / (nuc*dt/2 + 1)
-
-        # oldPpx2[iz] = oldPpx1[iz]
-        # oldPpx1[iz] = Ppx[iz]
-        # Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz] * Ex[iz]
-        # sumPx += Ppx[iz]
-
-
-        # Multi-photon losses ..............................................................
-        # (; dt) = model
-        # (; Pax, drho) = material
-        # lam0 = 2e-6   # (m) wavelength
-        # w0 = 2*pi * C0 / lam0   # frequency
-        # Ui = 12.063 * QE
-        # Wph = HBAR * w0
-        # K = ceil(Ui / Wph)
-
-        # II = abs2(Ex[iz])
-        # if II >= 1e-30
-        #     invII = 1 / II
-        # else
-        #     invII = 0
-        # end
-        # Pax[iz] = Pax[iz] + K*Wph * dt * drho[iz] * Ex[iz] * invII
-        # sumPx += Pax[iz]
-
-
-        # Plasma ...........................................................................
+        #  Plasma --------------------------------------------------------------------------
         if plasma
+            # Plasma current:
+            oldPpx2[iz] = oldPpx1[iz]
+            oldPpx1[iz] = Ppx[iz]
+            Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz] * Ex[iz]
+            sumPx += Ppx[iz]
+
+            # Multi-photon losses:
+            # (; dt) = model
+            # (; Pax, drho) = material
+            # lam0 = 2e-6   # (m) wavelength
+            # w0 = 2*pi * C0 / lam0   # frequency
+            # Ui = 12.063 * QE
+            # Wph = HBAR * w0
+            # K = ceil(Ui / Wph)
+
+            # II = abs2(Ex[iz])
+            # if II >= 1e-30
+            #     invII = 1 / II
+            # else
+            #     invII = 0
+            # end
+            # Pax[iz] = Pax[iz] + K*Wph * dt * drho[iz] * Ex[iz] * invII
+            # sumPx += Pax[iz]
+
+            # Electron density:
             II = 1 * EPS0 * C0 / 2 * abs2(Ex[iz])
             RI = ionrate(II)
             rho[iz] = rho0 - (rho0 - rho[iz]) * exp(-RI * dt)
@@ -345,9 +338,9 @@ end
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
-    (; kerr, Mk) = material
-    (; plasma, rho0, ionrate, rho, drho) = material
+    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
+       kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+       Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2) = material
 
     ix, iz = @index(Global, NTuple)
 
@@ -395,6 +388,7 @@ end
         # update P .........................................................................
         sumPx = zero(eltype(Ex))
         sumPz = zero(eltype(Ez))
+
         if dispersion
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -415,6 +409,17 @@ end
 
         # Plasma ...........................................................................
         if plasma
+            # Plasma current:
+            oldPpx2[ix,iz] = oldPpx1[ix,iz]
+            oldPpx1[ix,iz] = Ppx[ix,iz]
+            Ppx[ix,iz] = Ap * Ppx[ix,iz] + Bp * oldPpx2[ix,iz] + Cp * rho[ix,iz] * Ex[ix,iz]
+            oldPpz2[ix,iz] = oldPpz1[ix,iz]
+            oldPpz1[ix,iz] = Ppz[ix,iz]
+            Ppz[ix,iz] = Ap * Ppz[ix,iz] + Bp * oldPpz2[ix,iz] + Cp * rho[ix,iz] * Ez[ix,iz]
+            sumPx += Ppx[ix,iz]
+            sumPz += Ppz[ix,iz]
+
+            # Electron density:
             II = 1 * EPS0 * C0 / 2 * (abs2(Ex[ix,iz]) + abs2(Ez[ix,iz]))
             RI = ionrate(II)
             rho[ix,iz] = rho0 - (rho0 - rho[ix,iz]) * exp(-RI * dt)
@@ -579,9 +584,9 @@ end
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px,
-       oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
-    (; kerr, Mk) = material
-    (; plasma, rho0, ionrate, rho, drho) = material
+       oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
+       kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+       Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
@@ -668,6 +673,7 @@ end
         sumPx = zero(eltype(Ex))
         sumPy = zero(eltype(Ey))
         sumPz = zero(eltype(Ez))
+
         if dispersion
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -694,6 +700,27 @@ end
 
         # Plasma ...........................................................................
         if plasma
+            # Plasma current:
+            oldPpx2[ix,iy,iz] = oldPpx1[ix,iy,iz]
+            oldPpx1[ix,iy,iz] = Ppx[ix,iy,iz]
+            Ppx[ix,iy,iz] = Ap * Ppx[ix,iy,iz] +
+                            Bp * oldPpx2[ix,iy,iz] +
+                            Cp * rho[ix,iy,iz] * Ex[ix,iy,iz]
+            oldPpy2[ix,iy,iz] = oldPpy1[ix,iy,iz]
+            oldPpy1[ix,iy,iz] = Ppy[ix,iy,iz]
+            Ppy[ix,iy,iz] = Ap * Ppy[ix,iy,iz] +
+                            Bp * oldPpy2[ix,iy,iz] +
+                            Cp * rho[ix,iy,iz] * Ey[ix,iy,iz]
+            oldPpz2[ix,iy,iz] = oldPpz1[ix,iy,iz]
+            oldPpz1[ix,iy,iz] = Ppz[ix,iy,iz]
+            Ppz[ix,iy,iz] = Ap * Ppz[ix,iy,iz] +
+                            Bp * oldPpz2[ix,iy,iz] +
+                            Cp * rho[ix,iy,iz] * Ez[ix,iy,iz]
+            sumPx += Ppx[ix,iy,iz]
+            sumPy += Ppy[ix,iy,iz]
+            sumPz += Ppz[ix,iy,iz]
+
+            # Electron density
             II = 1 * EPS0 * C0 / 2 *
                  (abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz]))
             RI = ionrate(II)
