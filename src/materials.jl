@@ -22,12 +22,14 @@ struct PlasmaData{T, F}
     ionrate :: F
     rho0 :: T
     nuc :: T
+    frequency :: T
+    Uiev :: T
 end
 
 
-function Plasma(; ionrate, rho0, nuc=0)
-    rho0, nuc = promote(rho0, nuc)
-    return PlasmaData(ionrate, rho0, nuc)
+function Plasma(; ionrate, rho0, nuc, frequency, Uiev)
+    rho0, nuc, frequency, Uiev = promote(rho0, nuc, frequency, Uiev)
+    return PlasmaData(ionrate, rho0, nuc, frequency, Uiev)
 end
 
 
@@ -42,7 +44,7 @@ end
 # ******************************************************************************************
 # Materials
 # ******************************************************************************************
-struct Material1D{A, B, C, T, F}
+struct Material1D{A, B, C, F, T}
     # Linear dispersion:
     dispersion :: Bool
     Aq :: A
@@ -56,8 +58,8 @@ struct Material1D{A, B, C, T, F}
     Mk :: B
     # Plasma:
     plasma :: Bool
-    rho0 :: T
     ionrate :: F
+    rho0 :: T
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
     Ap :: T
@@ -66,7 +68,8 @@ struct Material1D{A, B, C, T, F}
     Ppx :: C
     oldPpx1 :: C
     oldPpx2 :: C
-    # Pax :: C
+    Ma :: T
+    Pax :: C
 end
 
 @adapt_structure Material1D
@@ -123,26 +126,30 @@ function material_init(material_data, grid::Grid1D, dt)
     if isnothing(plasma_data)
         plasma = false
         ionrate = identity
-        rho0, nuc, Ap, Bp, Cp = (0.0 for i=1:5)
-        rho, drho, Ppx, oldPpx1, oldPpx2 = (zeros(1) for i=1:5)
+        rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:5)
+        rho, drho, Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:6)
     else
         plasma = true
-        (; ionrate, rho0, nuc) = plasma_data
+        (; ionrate, rho0, nuc, frequency, Uiev) = plasma_data
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
-        rho, drho, Ppx, oldPpx1, oldPpx2 = (zeros(Nz) for i=1:5)
+        Ui = Uiev * QE   # eV -> J
+        Wph = HBAR * frequency   # energy of one photon
+        K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
+        Ma = K * Wph * dt   # update coefficient
+        rho, drho, Ppx, oldPpx1, oldPpx2, Pax = (zeros(Nz) for i=1:6)
     end
 
     material = Material1D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2,
-        # Pax,
+        kerr, Mk, plasma, ionrate, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2,
+        Ma, Pax,
     )
     return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material2D{A, B, C, T, F}
+struct Material2D{A, B, C, F, T}
     # Linear dispersion:
     dispersion :: Bool
     Aq :: A
@@ -159,8 +166,8 @@ struct Material2D{A, B, C, T, F}
     Mk :: B
     # Plasma:
     plasma :: Bool
-    rho0 :: T
     ionrate :: F
+    rho0 :: T
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
     Ap :: T
@@ -172,6 +179,9 @@ struct Material2D{A, B, C, T, F}
     Ppz :: C
     oldPpz1 :: C
     oldPpz2 :: C
+    Ma :: T
+    Pax :: C
+    Paz :: C
 end
 
 @adapt_structure Material2D
@@ -230,26 +240,32 @@ function material_init(material_data, grid::Grid2D, dt)
     if isnothing(plasma_data)
         plasma = false
         ionrate = identity
-        rho0, nuc, Ap, Bp, Cp = (0.0 for i=1:5)
-        rho, drho, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2 = (zeros(1) for i=1:8)
+        rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:5)
+        rho, drho = (zeros(1) for i=1:2)
+        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
         plasma = true
-        (; ionrate, rho0, nuc) = plasma_data
+        (; ionrate, rho0, nuc, frequency, Uiev) = plasma_data
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
-        rho, drho, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2 = (zeros(Nx,Nz) for i=1:8)
+        Ui = Uiev * QE   # eV -> J
+        Wph = HBAR * frequency   # energy of one photon
+        K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
+        Ma = K * Wph * dt   # update coefficient
+        rho, drho = (zeros(Nx,Nz) for i=1:2)
+        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(Nx,Nz) for i=1:8)
     end
 
     material = Material2D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
-        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2,
+        kerr, Mk, plasma, ionrate, rho0, rho, drho, Ap, Bp, Cp,
+        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
     return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material3D{A, B, C, T, F}
+struct Material3D{A, B, C, F, T}
     # Linear dispersion:
     dispersion :: Bool
     Aq :: A
@@ -269,8 +285,8 @@ struct Material3D{A, B, C, T, F}
     Mk :: B
     # Plasma:
     plasma :: Bool
-    rho0 :: T
     ionrate :: F
+    rho0 :: T
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
     Ap :: T
@@ -285,6 +301,10 @@ struct Material3D{A, B, C, T, F}
     Ppz :: C
     oldPpz1 :: C
     oldPpz2 :: C
+    Ma :: T
+    Pax :: C
+    Pay :: C
+    Paz :: C
 end
 
 @adapt_structure Material3D
@@ -345,25 +365,32 @@ function material_init(material_data, grid::Grid3D, dt)
     if isnothing(plasma_data)
         plasma = false
         ionrate = identity
-        rho0, nuc, Ap, Bp, Cp = (0.0 for i=1:5)
+        rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:5)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2 = (zeros(1) for i=1:3)
         Ppy, oldPpy1, oldPpy2 = (zeros(1) for i=1:3)
         Ppz, oldPpz1, oldPpz2 = (zeros(1) for i=1:3)
+        Pax, Pay, Paz = (zeros(1) for i=1:3)
     else
         plasma = true
-        (; rho0, ionrate, nuc) = plasma_data
+        (; rho0, ionrate, nuc, frequency, Uiev) = plasma_data
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
         rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
+        Ui = Uiev * QE   # eV -> J
+        Wph = HBAR * frequency   # energy of one photon
+        K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
+        Ma = K * Wph * dt   # update coefficient
         Ppx, oldPpx1, oldPpx2 = (zeros(Nx,Ny,Nz) for i=1:3)
         Ppy, oldPpy1, oldPpy2 = (zeros(Nx,Ny,Nz) for i=1:3)
         Ppz, oldPpz1, oldPpz2 = (zeros(Nx,Ny,Nz) for i=1:3)
+        Pax, Pay, Paz = (zeros(Nx,Ny,Nz) for i=1:3)
     end
 
     material = Material3D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+        kerr, Mk, plasma, ionrate, rho0, rho, drho, Ap, Bp, Cp,
         Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
+        Ma, Pax, Pay, Paz,
     )
     return eps, mu, sigma, material
 end

@@ -165,7 +165,7 @@ end
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
-       Ppx, oldPpx1, oldPpx2) = material
+       Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
 
     iz = @index(Global)
 
@@ -216,23 +216,15 @@ end
             Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz] * Ex[iz]
             sumPx += Ppx[iz]
 
-            # Multi-photon losses:
-            # (; dt) = model
-            # (; Pax, drho) = material
-            # lam0 = 2e-6   # (m) wavelength
-            # w0 = 2*pi * C0 / lam0   # frequency
-            # Ui = 12.063 * QE
-            # Wph = HBAR * w0
-            # K = ceil(Ui / Wph)
-
-            # II = abs2(Ex[iz])
-            # if II >= 1e-30
-            #     invII = 1 / II
-            # else
-            #     invII = 0
-            # end
-            # Pax[iz] = Pax[iz] + K*Wph * dt * drho[iz] * Ex[iz] * invII
-            # sumPx += Pax[iz]
+            # Multi-photon ionization losses:
+            II = abs2(Ex[iz])
+            if II >= eps(one(II))
+                invII = 1 / II
+            else
+                invII = zero(II)
+            end
+            Pax[iz] += Ma * drho[iz] * Ex[iz] * invII
+            sumPx += Pax[iz]
 
             # Electron density:
             II = 1 * EPS0 * C0 / 2 * abs2(Ex[iz])
@@ -340,7 +332,7 @@ end
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
-       Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2) = material
+       Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
 
     ix, iz = @index(Global, NTuple)
 
@@ -418,6 +410,18 @@ end
             Ppz[ix,iz] = Ap * Ppz[ix,iz] + Bp * oldPpz2[ix,iz] + Cp * rho[ix,iz] * Ez[ix,iz]
             sumPx += Ppx[ix,iz]
             sumPz += Ppz[ix,iz]
+
+            # Multi-photon ionization losses:
+            II = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
+            if II >= eps(one(II))
+                invII = 1 / II
+            else
+                invII = zero(II)
+            end
+            Pax[ix,iz] += Ma * drho[ix,iz] * Ex[ix,iz] * invII
+            Paz[ix,iz] += Ma * drho[ix,iz] * Ez[ix,iz] * invII
+            sumPx += Pax[ix,iz]
+            sumPz += Paz[ix,iz]
 
             # Electron density:
             II = 1 * EPS0 * C0 / 2 * (abs2(Ex[ix,iz]) + abs2(Ez[ix,iz]))
@@ -586,7 +590,8 @@ end
     (; dispersion, Aq, Bq, Cq, Px,
        oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
        kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
-       Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2) = material
+       Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
+       Ma, Pax, Pay, Paz) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
@@ -719,6 +724,20 @@ end
             sumPx += Ppx[ix,iy,iz]
             sumPy += Ppy[ix,iy,iz]
             sumPz += Ppz[ix,iy,iz]
+
+            # Multi-photon ionization losses:
+            II = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
+            if II >= eps(one(II))
+                invII = 1 / II
+            else
+                invII = zero(II)
+            end
+            Pax[ix,iy,iz] += Ma * drho[ix,iy,iz] * Ex[ix,iy,iz] * invII
+            Pay[ix,iy,iz] += Ma * drho[ix,iy,iz] * Ey[ix,iy,iz] * invII
+            Paz[ix,iy,iz] += Ma * drho[ix,iy,iz] * Ez[ix,iy,iz] * invII
+            sumPx += Pax[ix,iy,iz]
+            sumPy += Pay[ix,iy,iz]
+            sumPz += Paz[ix,iy,iz]
 
             # Electron density
             II = 1 * EPS0 * C0 / 2 *
