@@ -59,6 +59,7 @@ struct Material1D{A, B, C, F, T}
     # Plasma:
     plasma :: Bool
     ionrate :: F
+    Rava :: T
     rho0 :: T
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
@@ -126,8 +127,9 @@ function material_init(material_data, grid::Grid1D, dt)
     if isnothing(plasma_data)
         plasma = false
         ionrate = identity
-        rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:5)
-        rho, drho, Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:6)
+        Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
+        rho, drho = (zeros(1) for i=1:2)
+        Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:4)
     else
         plasma = true
         (; ionrate, rho0, nuc, frequency, Uiev) = plasma_data
@@ -135,13 +137,15 @@ function material_init(material_data, grid::Grid1D, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
         K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
+        sigmaB = QE^2 / ME * nuc / (nuc^2 + frequency^2)
+        Rava = sigmaB / Ui
         Ma = K * Wph * dt   # update coefficient
         rho, drho, Ppx, oldPpx1, oldPpx2, Pax = (zeros(Nz) for i=1:6)
     end
 
     material = Material1D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-        kerr, Mk, plasma, ionrate, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2,
+        kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2,
         Ma, Pax,
     )
     return eps, mu, sigma, material
@@ -167,6 +171,7 @@ struct Material2D{A, B, C, F, T}
     # Plasma:
     plasma :: Bool
     ionrate :: F
+    Rava :: T
     rho0 :: T
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
@@ -240,7 +245,7 @@ function material_init(material_data, grid::Grid2D, dt)
     if isnothing(plasma_data)
         plasma = false
         ionrate = identity
-        rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:5)
+        Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
@@ -250,6 +255,8 @@ function material_init(material_data, grid::Grid2D, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
         K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
+        sigmaB = QE^2 / ME * nuc / (nuc^2 + frequency^2)
+        Rava = sigmaB / Ui
         Ma = K * Wph * dt   # update coefficient
         rho, drho = (zeros(Nx,Nz) for i=1:2)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(Nx,Nz) for i=1:8)
@@ -257,7 +264,7 @@ function material_init(material_data, grid::Grid2D, dt)
 
     material = Material2D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-        kerr, Mk, plasma, ionrate, rho0, rho, drho, Ap, Bp, Cp,
+        kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
     return eps, mu, sigma, material
@@ -286,6 +293,7 @@ struct Material3D{A, B, C, F, T}
     # Plasma:
     plasma :: Bool
     ionrate :: F
+    Rava :: T
     rho0 :: T
     rho :: C   # electron density
     drho :: C   # time derivative of electron density
@@ -365,7 +373,7 @@ function material_init(material_data, grid::Grid3D, dt)
     if isnothing(plasma_data)
         plasma = false
         ionrate = identity
-        rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:5)
+        Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2 = (zeros(1) for i=1:3)
         Ppy, oldPpy1, oldPpy2 = (zeros(1) for i=1:3)
@@ -379,6 +387,8 @@ function material_init(material_data, grid::Grid3D, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
         K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
+        sigmaB = QE^2 / ME * nuc / (nuc^2 + frequency^2)
+        Rava = sigmaB / Ui
         Ma = K * Wph * dt   # update coefficient
         Ppx, oldPpx1, oldPpx2 = (zeros(Nx,Ny,Nz) for i=1:3)
         Ppy, oldPpy1, oldPpy2 = (zeros(Nx,Ny,Nz) for i=1:3)
@@ -388,7 +398,7 @@ function material_init(material_data, grid::Grid3D, dt)
 
     material = Material3D(
         dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-        kerr, Mk, plasma, ionrate, rho0, rho, drho, Ap, Bp, Cp,
+        kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
         Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
         Ma, Pax, Pay, Paz,
     )

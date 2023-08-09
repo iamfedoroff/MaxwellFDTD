@@ -164,7 +164,7 @@ end
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-       kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+       kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
        Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
 
     iz = @index(Global)
@@ -210,27 +210,34 @@ end
 
         #  Plasma --------------------------------------------------------------------------
         if plasma
+            E2 = abs2(Ex[iz])
+            II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
+
             # Plasma current:
             oldPpx2[iz] = oldPpx1[iz]
             oldPpx1[iz] = Ppx[iz]
-            Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz] * Ex[iz]
+            Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz]*rho0 * Ex[iz]
             sumPx += Ppx[iz]
 
             # Multi-photon ionization losses:
-            II = abs2(Ex[iz])
-            if II >= eps(one(II))
-                invII = 1 / II
+            if E2 >= eps(one(E2))
+                invE2 = 1 / E2
             else
-                invII = zero(II)
+                invE2 = zero(E2)
             end
-            Pax[iz] += Ma * drho[iz] * Ex[iz] * invII
+            Pax[iz] += Ma * drho[iz]*rho0 * Ex[iz] * invE2
             sumPx += Pax[iz]
 
             # Electron density:
-            II = 1 * EPS0 * C0 / 2 * abs2(Ex[iz])
-            RI = ionrate(II)
-            rho[iz] = rho0 - (rho0 - rho[iz]) * exp(-RI * dt)
-            drho[iz] = RI * (rho0 - rho[iz])
+            R1 = ionrate(II)
+            R2 = Rava * E2
+            if R2 == 0
+                rho[iz] = 1 - (1 - rho[iz]) * exp(-R1 * dt)
+            else
+                R12 = R1 - R2
+                rho[iz] = R1/R12*1 - (R1/R12*1 - rho[iz]) * exp(-R12 * dt)
+            end
+            drho[iz] = R1 * (1 - rho[iz])
         end
 
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
@@ -331,7 +338,7 @@ end
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-       kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+       kerr, Mk, plasma, rho0, ionrate, Rava, rho, drho, Ap, Bp, Cp,
        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
 
     ix, iz = @index(Global, NTuple)
@@ -401,33 +408,44 @@ end
 
         # Plasma ...........................................................................
         if plasma
+            E2 = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
+            II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
+
             # Plasma current:
             oldPpx2[ix,iz] = oldPpx1[ix,iz]
             oldPpx1[ix,iz] = Ppx[ix,iz]
-            Ppx[ix,iz] = Ap * Ppx[ix,iz] + Bp * oldPpx2[ix,iz] + Cp * rho[ix,iz] * Ex[ix,iz]
+            Ppx[ix,iz] = Ap * Ppx[ix,iz] +
+                         Bp * oldPpx2[ix,iz] +
+                         Cp * rho[ix,iz]*rho0 * Ex[ix,iz]
             oldPpz2[ix,iz] = oldPpz1[ix,iz]
             oldPpz1[ix,iz] = Ppz[ix,iz]
-            Ppz[ix,iz] = Ap * Ppz[ix,iz] + Bp * oldPpz2[ix,iz] + Cp * rho[ix,iz] * Ez[ix,iz]
+            Ppz[ix,iz] = Ap * Ppz[ix,iz] +
+                         Bp * oldPpz2[ix,iz] +
+                         Cp * rho[ix,iz]*rho0 * Ez[ix,iz]
             sumPx += Ppx[ix,iz]
             sumPz += Ppz[ix,iz]
 
             # Multi-photon ionization losses:
-            II = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
-            if II >= eps(one(II))
-                invII = 1 / II
+            if E2 >= eps(one(E2))
+                invE2 = 1 / E2
             else
-                invII = zero(II)
+                invE2 = zero(E2)
             end
-            Pax[ix,iz] += Ma * drho[ix,iz] * Ex[ix,iz] * invII
-            Paz[ix,iz] += Ma * drho[ix,iz] * Ez[ix,iz] * invII
+            Pax[ix,iz] += Ma * drho[ix,iz]*rho0 * Ex[ix,iz] * invE2
+            Paz[ix,iz] += Ma * drho[ix,iz]*rho0 * Ez[ix,iz] * invE2
             sumPx += Pax[ix,iz]
             sumPz += Paz[ix,iz]
 
             # Electron density:
-            II = 1 * EPS0 * C0 / 2 * (abs2(Ex[ix,iz]) + abs2(Ez[ix,iz]))
-            RI = ionrate(II)
-            rho[ix,iz] = rho0 - (rho0 - rho[ix,iz]) * exp(-RI * dt)
-            drho[ix,iz] = RI * (rho0 - rho[ix,iz])
+            R1 = ionrate(II)
+            R2 = Rava * E2
+            if R2 == 0
+                rho[ix,iz] = 1 - (1 - rho[ix,iz]) * exp(-R1 * dt)
+            else
+                R12 = R1 - R2
+                rho[ix,iz] = R1/R12*1 - (R1/R12*1 - rho[ix,iz]) * exp(-R12 * dt)
+            end
+            drho[ix,iz] = R1 * (1 - rho[ix,iz])
         end
 
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
@@ -589,7 +607,7 @@ end
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
     (; dispersion, Aq, Bq, Cq, Px,
        oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-       kerr, Mk, plasma, rho0, ionrate, rho, drho, Ap, Bp, Cp,
+       kerr, Mk, plasma, rho0, ionrate, Rava, rho, drho, Ap, Bp, Cp,
        Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
        Ma, Pax, Pay, Paz) = material
 
@@ -705,46 +723,52 @@ end
 
         # Plasma ...........................................................................
         if plasma
+            E2 = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
+            II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
+
             # Plasma current:
             oldPpx2[ix,iy,iz] = oldPpx1[ix,iy,iz]
             oldPpx1[ix,iy,iz] = Ppx[ix,iy,iz]
             Ppx[ix,iy,iz] = Ap * Ppx[ix,iy,iz] +
                             Bp * oldPpx2[ix,iy,iz] +
-                            Cp * rho[ix,iy,iz] * Ex[ix,iy,iz]
+                            Cp * rho[ix,iy,iz]*rho0 * Ex[ix,iy,iz]
             oldPpy2[ix,iy,iz] = oldPpy1[ix,iy,iz]
             oldPpy1[ix,iy,iz] = Ppy[ix,iy,iz]
             Ppy[ix,iy,iz] = Ap * Ppy[ix,iy,iz] +
                             Bp * oldPpy2[ix,iy,iz] +
-                            Cp * rho[ix,iy,iz] * Ey[ix,iy,iz]
+                            Cp * rho[ix,iy,iz]*rho0 * Ey[ix,iy,iz]
             oldPpz2[ix,iy,iz] = oldPpz1[ix,iy,iz]
             oldPpz1[ix,iy,iz] = Ppz[ix,iy,iz]
             Ppz[ix,iy,iz] = Ap * Ppz[ix,iy,iz] +
                             Bp * oldPpz2[ix,iy,iz] +
-                            Cp * rho[ix,iy,iz] * Ez[ix,iy,iz]
+                            Cp * rho[ix,iy,iz]*rho0 * Ez[ix,iy,iz]
             sumPx += Ppx[ix,iy,iz]
             sumPy += Ppy[ix,iy,iz]
             sumPz += Ppz[ix,iy,iz]
 
             # Multi-photon ionization losses:
-            II = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
-            if II >= eps(one(II))
-                invII = 1 / II
+            if E2 >= eps(one(E2))
+                invE2 = 1 / E2
             else
-                invII = zero(II)
+                invE2 = zero(E2)
             end
-            Pax[ix,iy,iz] += Ma * drho[ix,iy,iz] * Ex[ix,iy,iz] * invII
-            Pay[ix,iy,iz] += Ma * drho[ix,iy,iz] * Ey[ix,iy,iz] * invII
-            Paz[ix,iy,iz] += Ma * drho[ix,iy,iz] * Ez[ix,iy,iz] * invII
+            Pax[ix,iy,iz] += Ma * drho[ix,iy,iz]*rho0 * Ex[ix,iy,iz] * invE2
+            Pay[ix,iy,iz] += Ma * drho[ix,iy,iz]*rho0 * Ey[ix,iy,iz] * invE2
+            Paz[ix,iy,iz] += Ma * drho[ix,iy,iz]*rho0 * Ez[ix,iy,iz] * invE2
             sumPx += Pax[ix,iy,iz]
             sumPy += Pay[ix,iy,iz]
             sumPz += Paz[ix,iy,iz]
 
-            # Electron density
-            II = 1 * EPS0 * C0 / 2 *
-                 (abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz]))
-            RI = ionrate(II)
-            rho[ix,iy,iz] = rho0 - (rho0 - rho[ix,iy,iz]) * exp(-RI * dt)
-            drho[ix,iy,iz] = RI * (rho0 - rho[ix,iy,iz])
+            # Electron density:
+            R1 = ionrate(II)
+            R2 = Rava * E2
+            if R2 == 0
+                rho[ix,iy,iz] = 1 - (1 - rho[ix,iy,iz]) * exp(-R1 * dt)
+            else
+                R12 = R1 - R2
+                rho[ix,iy,iz] = R1/R12*1 - (R1/R12*1 - rho[ix,iy,iz]) * exp(-R12 * dt)
+            end
+            drho[ix,iy,iz] = R1 * (1 - rho[ix,iy,iz])
         end
 
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
