@@ -24,19 +24,20 @@ struct PlasmaData{T, F}
     nuc :: T
     frequency :: T
     Uiev :: T
+    mr :: T
 end
 
 
-function Plasma(; ionrate, rho0, nuc, frequency, Uiev)
-    rho0, nuc, frequency, Uiev = promote(rho0, nuc, frequency, Uiev)
-    return PlasmaData(ionrate, rho0, nuc, frequency, Uiev)
+function Plasma(; ionrate, rho0, nuc, frequency, Uiev, mr=1)
+    rho0, nuc, frequency, Uiev, mr = promote(rho0, nuc, frequency, Uiev, mr)
+    return PlasmaData(ionrate, rho0, nuc, frequency, Uiev, mr)
 end
 
 
-function ade_plasma_coefficients(nuc, dt)
+function ade_plasma_coefficients(nuc, mr, dt)
     Ap = 2 / (nuc*dt/2 + 1)
     Bp = (nuc*dt/2 - 1) / (nuc*dt/2 + 1)
-    Cp = QE^2/ME*dt^2 / (nuc*dt/2 + 1)
+    Cp = QE^2 / (ME*mr) * dt^2 / (nuc*dt/2 + 1)
     return Ap, Bp, Cp
 end
 
@@ -132,12 +133,12 @@ function material_init(material_data, grid::Grid1D, dt)
         Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:4)
     else
         plasma = true
-        (; ionrate, rho0, nuc, frequency, Uiev) = plasma_data
-        Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
+        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma_data
+        Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
         K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
-        sigmaB = QE^2 / ME * nuc / (nuc^2 + frequency^2)
+        sigmaB = QE^2 / (ME*mr) * nuc / (nuc^2 + frequency^2)
         Rava = sigmaB / Ui
         Ma = K * Wph * dt   # update coefficient
         rho, drho, Ppx, oldPpx1, oldPpx2, Pax = (zeros(Nz) for i=1:6)
@@ -250,12 +251,12 @@ function material_init(material_data, grid::Grid2D, dt)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
         plasma = true
-        (; ionrate, rho0, nuc, frequency, Uiev) = plasma_data
-        Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
+        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma_data
+        Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
         K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
-        sigmaB = QE^2 / ME * nuc / (nuc^2 + frequency^2)
+        sigmaB = QE^2 / (ME*mr) * nuc / (nuc^2 + frequency^2)
         Rava = sigmaB / Ui
         Ma = K * Wph * dt   # update coefficient
         rho, drho = (zeros(Nx,Nz) for i=1:2)
@@ -381,13 +382,13 @@ function material_init(material_data, grid::Grid3D, dt)
         Pax, Pay, Paz = (zeros(1) for i=1:3)
     else
         plasma = true
-        (; rho0, ionrate, nuc, frequency, Uiev) = plasma_data
-        Ap, Bp, Cp = ade_plasma_coefficients(nuc, dt)
+        (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma_data
+        Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
         K = ceil(Ui / Wph)   # minimum number of photons to extract one electron
-        sigmaB = QE^2 / ME * nuc / (nuc^2 + frequency^2)
+        sigmaB = QE^2 / (ME*mr) * nuc / (nuc^2 + frequency^2)
         Rava = sigmaB / Ui
         Ma = K * Wph * dt   # update coefficient
         Ppx, oldPpx1, oldPpx2 = (zeros(Nx,Ny,Nz) for i=1:3)
