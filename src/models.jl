@@ -17,7 +17,7 @@ end
 @adapt_structure Model
 
 
-function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=(0,0))
+function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=nothing)
     field = Field(grid)
 
     # Time grid:

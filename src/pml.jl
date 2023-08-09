@@ -27,44 +27,58 @@ end
 
 
 function LeftPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
-    xb = x[1] + Lx
-    ixb = argmin(abs.(x .- xb))
-    Nxpml = ixb
+    if Lx == 0
+        ixb = 1
+        K = ones(1)
+        B = zeros(1)
+        A = zeros(1)
+    else
+        xb = x[1] + Lx
+        ixb = argmin(abs.(x .- xb))
+        Nxpml = ixb
 
-    eta0 = sqrt(MU0 / EPS0)
-    sigma_max = -(m + 1) * log(R0) / (2 * eta0 * Lx)
+        eta0 = sqrt(MU0 / EPS0)
+        sigma_max = -(m + 1) * log(R0) / (2 * eta0 * Lx)
 
-    sigma = zeros(Nxpml)
-    for ix=1:Nxpml
-        ixpml = ix
-        sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
+        sigma = zeros(Nxpml)
+        for ix=1:Nxpml
+            ixpml = ix
+            sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
+        end
+
+        K = ones(Nxpml) * kappa
+        B = @. exp(-(sigma / K + alpha) * dt / EPS0)
+        A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     end
-
-    K = ones(Nxpml) * kappa
-    B = @. exp(-(sigma / K + alpha) * dt / EPS0)
-    A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     return PMLLayer(ixb, K, A, B)
 end
 
 
 function RightPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
-    Nx = length(x)
-    xb = x[end] - Lx
-    ixb = argmin(abs.(x .- xb))
-    Nxpml = Nx - ixb + 1
+    if Lx == 0
+        ixb = length(x)
+        K = ones(1)
+        B = zeros(1)
+        A = zeros(1)
+    else
+        Nx = length(x)
+        xb = x[end] - Lx
+        ixb = argmin(abs.(x .- xb))
+        Nxpml = Nx - ixb + 1
 
-    eta0 = sqrt(MU0 / EPS0)
-    sigma_max = -(m + 1) * log(R0) / (2 * eta0 * Lx)
+        eta0 = sqrt(MU0 / EPS0)
+        sigma_max = -(m + 1) * log(R0) / (2 * eta0 * Lx)
 
-    sigma = zeros(Nxpml)
-    for ix=ixb:Nx
-        ixpml = ix - ixb + 1
-        sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
+        sigma = zeros(Nxpml)
+        for ix=ixb:Nx
+            ixpml = ix - ixb + 1
+            sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
+        end
+
+        K = ones(Nxpml) * kappa
+        B = @. exp(-(sigma / K + alpha) * dt / EPS0)
+        A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     end
-
-    K = ones(Nxpml) * kappa
-    B = @. exp(-(sigma / K + alpha) * dt / EPS0)
-    A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     return PMLLayer(ixb, K, A, B)
 end
 
@@ -88,7 +102,12 @@ end
 
 function PML(grid::Grid1D, box, dt)
     (; Nz, z) = grid
-    Lz1, Lz2 = box
+
+    if isnothing(box)
+        Lz1, Lz2 = 0, 0
+    else
+        Lz1, Lz2 = box
+    end
 
     if typeof(Lz1) <: PMLData
         (; thickness, kappa, alpha, R0, m) = Lz1
@@ -142,7 +161,12 @@ end
 
 function PML(grid::Grid2D, box, dt)
     (; Nx, Nz, x, z) = grid
-    Lx1, Lx2, Lz1, Lz2 = box
+
+    if isnothing(box)
+        Lx1, Lx2, Lz1, Lz2 = 0, 0, 0, 0
+    else
+        Lx1, Lx2, Lz1, Lz2 = box
+    end
 
     if typeof(Lx1) <: PMLData
         (; thickness, kappa, alpha, R0, m) = Lx1
@@ -236,7 +260,12 @@ end
 
 function PML(grid::Grid3D, box, dt)
     (; Nx, Ny, Nz, x, y, z) = grid
-    Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = box
+
+    if isnothing(box)
+        Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = 0, 0, 0, 0, 0, 0
+    else
+        Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = box
+    end
 
     if typeof(Lx1) <: PMLData
         (; thickness, kappa, alpha, R0, m) = Lx1
