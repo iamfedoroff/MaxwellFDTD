@@ -161,11 +161,9 @@ end
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
     (; field, pml, material, dt, Me, Md1, Md2) = model
     (; grid, Hy, Dx, Ex) = field
-    (; Nz, dz) = grid
+    (; Nz, dz, z) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-       kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
-       Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
+    (; geometry, dispersion, plasma, kerr) = material
 
     iz = @index(Global)
 
@@ -196,20 +194,22 @@ end
         # update P .........................................................................
         sumPx = zero(eltype(Ex))
 
-        if dispersion
+        if dispersion && geometry(z[iz])
+            (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
                 oldPx2[iq,iz] = oldPx1[iq,iz]
                 oldPx1[iq,iz] = Px[iq,iz]
-                Px[iq,iz] = Aq[iq,iz] * Px[iq,iz] +
-                            Bq[iq,iz] * oldPx2[iq,iz] +
-                            Cq[iq,iz] * Ex[iz]
+                Px[iq,iz] = Aq[iq] * Px[iq,iz] + Bq[iq] * oldPx2[iq,iz] + Cq[iq] * Ex[iz]
                 sumPx += Px[iq,iz]
             end
         end
 
         #  Plasma --------------------------------------------------------------------------
-        if plasma
+        if plasma && geometry(z[iz])
+            (; ionrate, Rava, rho0, rho, drho,
+               Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
+
             E2 = abs2(Ex[iz])
             II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
 
@@ -243,16 +243,18 @@ end
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
         DmPx = Dx[iz] - sumPx
 
-        if kerr
+        if kerr && geometry(z[iz])
+            (; Mk) = material
+
             # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
-            # Ex[iz] = DmPx / (Me[iz] + Mk[iz] * Ex[iz]^2)
+            # Ex[iz] = DmPx / (Me[iz] + Mk * Ex[iz]^2)
 
             # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
-            # Ex[iz] = (DmPx + 2*Mk[iz] * Ex[iz]^3) / (Me[iz] + 3*Mk[iz] * Ex[iz]^2)
+            # Ex[iz] = (DmPx + 2*Mk * Ex[iz]^3) / (Me[iz] + 3*Mk * Ex[iz]^2)
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[iz] = (1 + 2*Mk[iz] / Me[iz]^3 * DmPx^2) /
-                     (1 + 3*Mk[iz] / Me[iz]^3 * DmPx^2) * DmPx / Me[iz]
+            Ex[iz] = (1 + 2*Mk / Me[iz]^3 * DmPx^2) /
+                     (1 + 3*Mk / Me[iz]^3 * DmPx^2) * DmPx / Me[iz]
         else
             Ex[iz] = DmPx / Me[iz]
         end
@@ -335,11 +337,9 @@ end
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
     (; field, pml, material, dt, Me, Md1, Md2) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
-    (; Nx, Nz, dx, dz) = grid
+    (; Nx, Nz, dx, dz, x, z) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-       kerr, Mk, plasma, rho0, ionrate, Rava, rho, drho, Ap, Bp, Cp,
-       Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
+    (; geometry, dispersion, plasma, kerr) = material
 
     ix, iz = @index(Global, NTuple)
 
@@ -388,26 +388,30 @@ end
         sumPx = zero(eltype(Ex))
         sumPz = zero(eltype(Ez))
 
-        if dispersion
+        if dispersion && geometry(x[ix], z[iz])
+            (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
                 oldPx2[iq,ix,iz] = oldPx1[iq,ix,iz]
                 oldPx1[iq,ix,iz] = Px[iq,ix,iz]
-                Px[iq,ix,iz] = Aq[iq,ix,iz] * Px[iq,ix,iz] +
-                            Bq[iq,ix,iz] * oldPx2[iq,ix,iz] +
-                            Cq[iq,ix,iz] * Ex[ix,iz]
+                Px[iq,ix,iz] = Aq[iq] * Px[iq,ix,iz] +
+                               Bq[iq] * oldPx2[iq,ix,iz] +
+                               Cq[iq] * Ex[ix,iz]
                 oldPz2[iq,ix,iz] = oldPz1[iq,ix,iz]
                 oldPz1[iq,ix,iz] = Pz[iq,ix,iz]
-                Pz[iq,ix,iz] = Aq[iq,ix,iz] * Pz[iq,ix,iz] +
-                            Bq[iq,ix,iz] * oldPz2[iq,ix,iz] +
-                            Cq[iq,ix,iz] * Ez[ix,iz]
+                Pz[iq,ix,iz] = Aq[iq] * Pz[iq,ix,iz] +
+                               Bq[iq] * oldPz2[iq,ix,iz] +
+                               Cq[iq] * Ez[ix,iz]
                 sumPx += Px[iq,ix,iz]
                 sumPz += Pz[iq,ix,iz]
             end
         end
 
         # Plasma ...........................................................................
-        if plasma
+        if plasma && geometry(x[ix], z[iz])
+            (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
+               Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
+
             E2 = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
             II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
 
@@ -452,22 +456,22 @@ end
         DmPx = Dx[ix,iz] - sumPx
         DmPz = Dz[ix,iz] - sumPz
 
-        if kerr
+        if kerr && geometry(x[ix], z[iz])
+            (; Mk) = material
+
             # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
-            # Ex[ix,iz] = DmPx / (Me[ix,iz] + Mk[ix,iz] * Ex[ix,iz]^2)
-            # Ez[ix,iz] = DmPz / (Me[ix,iz] + Mk[ix,iz] * Ez[ix,iz]^2)
+            # Ex[ix,iz] = DmPx / (Me[ix,iz] + Mk * Ex[ix,iz]^2)
+            # Ez[ix,iz] = DmPz / (Me[ix,iz] + Mk * Ez[ix,iz]^2)
 
             # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
-            # Ex[ix,iz] = (DmPx + 2*Mk[ix,iz] * Ex[ix,iz]^3) /
-            #             (Me[ix,iz] + 3*Mk[ix,iz] * Ex[ix,iz]^2)
-            # Ez[ix,iz] = (DmPz + 2*Mk[ix,iz] * Ez[ix,iz]^3) /
-            #             (Me[ix,iz] + 3*Mk[ix,iz] * Ez[ix,iz]^2)
+            # Ex[ix,iz] = (DmPx + 2*Mk * Ex[ix,iz]^3) / (Me[ix,iz] + 3*Mk * Ex[ix,iz]^2)
+            # Ez[ix,iz] = (DmPz + 2*Mk * Ez[ix,iz]^3) / (Me[ix,iz] + 3*Mk * Ez[ix,iz]^2)
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[ix,iz] = (1 + 2*Mk[ix,iz] / Me[ix,iz]^3 * DmPx^2) /
-                        (1 + 3*Mk[ix,iz] / Me[ix,iz]^3 * DmPx^2) * DmPx / Me[ix,iz]
-            Ez[ix,iz] = (1 + 2*Mk[ix,iz] / Me[ix,iz]^3 * DmPz^2) /
-                        (1 + 3*Mk[ix,iz] / Me[ix,iz]^3 * DmPz^2) * DmPz / Me[ix,iz]
+            Ex[ix,iz] = (1 + 2*Mk / Me[ix,iz]^3 * DmPx^2) /
+                        (1 + 3*Mk / Me[ix,iz]^3 * DmPx^2) * DmPx / Me[ix,iz]
+            Ez[ix,iz] = (1 + 2*Mk / Me[ix,iz]^3 * DmPz^2) /
+                        (1 + 3*Mk / Me[ix,iz]^3 * DmPz^2) * DmPz / Me[ix,iz]
         else
             Ex[ix,iz] = DmPx / Me[ix,iz]
             Ez[ix,iz] = DmPz / Me[ix,iz]
@@ -601,15 +605,11 @@ end
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
 @kernel function update_E_kernel!(field::Field3D, pml, material, dt, Me, Md1, Md2)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
-    (; Nx, Ny, Nz, dx, dy, dz) = grid
+    (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
-    (; dispersion, Aq, Bq, Cq, Px,
-       oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-       kerr, Mk, plasma, rho0, ionrate, Rava, rho, drho, Ap, Bp, Cp,
-       Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
-       Ma, Pax, Pay, Paz) = material
+    (; geometry, dispersion, plasma, kerr) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
@@ -697,7 +697,9 @@ end
         sumPy = zero(eltype(Ey))
         sumPz = zero(eltype(Ez))
 
-        if dispersion
+        if dispersion && geometry(x[ix], y[iy], z[iz])
+            (; Aq, Bq, Cq,
+               Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
                 oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
@@ -722,7 +724,11 @@ end
         end
 
         # Plasma ...........................................................................
-        if plasma
+        if plasma && geometry(x[ix], y[iy], z[iz])
+            (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
+               Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
+               Ma, Pax, Pay, Paz) = material
+
             E2 = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
             II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
 
@@ -776,30 +782,29 @@ end
         DmPy = Dy[ix,iy,iz] - sumPy
         DmPz = Dz[ix,iy,iz] - sumPz
 
-        if kerr
+        if kerr && geometry(x[ix], y[iy], z[iz])
+            (; Mk) = material
+
             # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
-            # Ex[ix,iy,iz] = DmPx / (Me[ix,iy,iz] + Mk[ix,iy,iz] * Ex[ix,iy,iz]^2)
-            # Ey[ix,iy,iz] = DmPy / (Me[ix,iy,iz] + Mk[ix,iy,iz] * Ey[ix,iy,iz]^2)
-            # Ez[ix,iy,iz] = DmPz / (Me[ix,iy,iz] + Mk[ix,iy,iz] * Ez[ix,iy,iz]^2)
+            # Ex[ix,iy,iz] = DmPx / (Me[ix,iy,iz] + Mk * Ex[ix,iy,iz]^2)
+            # Ey[ix,iy,iz] = DmPy / (Me[ix,iy,iz] + Mk * Ey[ix,iy,iz]^2)
+            # Ez[ix,iy,iz] = DmPz / (Me[ix,iy,iz] + Mk * Ez[ix,iy,iz]^2)
 
             # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
-            # Ex[ix,iy,iz] = (DmPx + 2*Mk[ix,iy,iz] * Ex[ix,iy,iz]^3) /
-            #                (Me[ix,iy,iz] + 3*Mk[ix,iy,iz] * Ex[ix,iy,iz]^2)
-            # Ey[ix,iy,iz] = (DmPy + 2*Mk[ix,iy,iz] * Ey[ix,iy,iz]^3) /
-            #                (Me[ix,iy,iz] + 3*Mk[ix,iy,iz] * Ey[ix,iy,iz]^2)
-            # Ez[ix,iy,iz] = (DmPz + 2*Mk[ix,iy,iz] * Ez[ix,iy,iz]^3) /
-            #                (Me[ix,iy,iz] + 3*Mk[ix,iy,iz] * Ez[ix,iy,iz]^2)
+            # Ex[ix,iy,iz] = (DmPx + 2*Mk * Ex[ix,iy,iz]^3) /
+            #                (Me[ix,iy,iz] + 3*Mk * Ex[ix,iy,iz]^2)
+            # Ey[ix,iy,iz] = (DmPy + 2*Mk * Ey[ix,iy,iz]^3) /
+            #                (Me[ix,iy,iz] + 3*Mk * Ey[ix,iy,iz]^2)
+            # Ez[ix,iy,iz] = (DmPz + 2*Mk * Ez[ix,iy,iz]^3) /
+            #                (Me[ix,iy,iz] + 3*Mk * Ez[ix,iy,iz]^2)
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[ix,iy,iz] = (1 + 2*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPx^2) /
-                           (1 + 3*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPx^2) *
-                           DmPx / Me[ix,iy,iz]
-            Ey[ix,iy,iz] = (1 + 2*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPy^2) /
-                           (1 + 3*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPy^2) *
-                           DmPy / Me[ix,iy,iz]
-            Ez[ix,iy,iz] = (1 + 2*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPz^2) /
-                           (1 + 3*Mk[ix,iy,iz] / Me[ix,iy,iz]^3 * DmPz^2) *
-                           DmPz / Me[ix,iy,iz]
+            Ex[ix,iy,iz] = (1 + 2*Mk / Me[ix,iy,iz]^3 * DmPx^2) /
+                           (1 + 3*Mk / Me[ix,iy,iz]^3 * DmPx^2) * DmPx / Me[ix,iy,iz]
+            Ey[ix,iy,iz] = (1 + 2*Mk / Me[ix,iy,iz]^3 * DmPy^2) /
+                           (1 + 3*Mk / Me[ix,iy,iz]^3 * DmPy^2) * DmPy / Me[ix,iy,iz]
+            Ez[ix,iy,iz] = (1 + 2*Mk / Me[ix,iy,iz]^3 * DmPz^2) /
+                           (1 + 3*Mk / Me[ix,iy,iz]^3 * DmPz^2) * DmPz / Me[ix,iy,iz]
         else
             Ex[ix,iy,iz] = DmPx / Me[ix,iy,iz]
             Ey[ix,iy,iz] = DmPy / Me[ix,iy,iz]

@@ -45,33 +45,34 @@ end
 # ******************************************************************************************
 # Materials
 # ******************************************************************************************
-struct Material1D{A, B, C, F, T}
+struct Material1D{G, V, A, B, F, T}
+    geometry :: G
     # Linear dispersion:
     dispersion :: Bool
-    Aq :: A
-    Bq :: A
-    Cq :: A
+    Aq :: V
+    Bq :: V
+    Cq :: V
     Px :: A
     oldPx1 :: A
     oldPx2 :: A
     # Kerr:
     kerr :: Bool
-    Mk :: B
+    Mk :: T
     # Plasma:
     plasma :: Bool
     ionrate :: F
     Rava :: T
     rho0 :: T
-    rho :: C   # electron density
-    drho :: C   # time derivative of electron density
+    rho :: B   # electron density
+    drho :: B   # time derivative of electron density
     Ap :: T
     Bp :: T
     Cp :: T
-    Ppx :: C
-    oldPpx1 :: C
-    oldPpx2 :: C
+    Ppx :: B
+    oldPpx1 :: B
+    oldPpx2 :: B
     Ma :: T
-    Pax :: C
+    Pax :: B
 end
 
 @adapt_structure Material1D
@@ -94,7 +95,8 @@ function material_init(material_data, grid::Grid1D, dt)
     if isnothing(chi)
         dispersion = false
 
-        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
+        # to avoid issues with CUDA kernels, the variables should have the same type for all
+        # logical branches:
         Aq, Bq, Cq = (zeros(1) for i=1:3)
         Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
     else
@@ -105,12 +107,9 @@ function material_init(material_data, grid::Grid1D, dt)
         end
 
         Nq = length(chi)
-        Aq, Bq, Cq = (zeros(Nq,Nz) for i=1:3)
-        for iz=1:Nz, iq=1:Nq
-            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-            Aq[iq,iz] = geometry(z[iz]) * Aq0
-            Bq[iq,iz] = geometry(z[iz]) * Bq0
-            Cq[iq,iz] = geometry(z[iz]) * Cq0
+        Aq, Bq, Cq = (zeros(Nq) for i=1:3)
+        for iq=1:Nq
+            Aq[iq], Bq[iq], Cq[iq] = ade_coefficients(chi[iq], dt)
         end
         Px, oldPx1, oldPx2 = (zeros(Nq,Nz) for i=1:3)
     end
@@ -118,10 +117,10 @@ function material_init(material_data, grid::Grid1D, dt)
     # Kerr:
     if isnothing(chi3)
         kerr = false
-        Mk = zeros(1)
+        Mk = 0.0
     else
         kerr = true
-        Mk = [geometry(z[iz]) ? EPS0*chi3 : 0 for iz=1:Nz]
+        Mk = EPS0 * chi3
     end
 
     # Plasma:
@@ -145,21 +144,21 @@ function material_init(material_data, grid::Grid1D, dt)
     end
 
     material = Material1D(
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-        kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2,
-        Ma, Pax,
+        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, kerr, Mk, plasma, ionrate,
+        Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax,
     )
     return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material2D{A, B, C, F, T}
+struct Material2D{G, V, A, B, F, T}
+    geometry :: G
     # Linear dispersion:
     dispersion :: Bool
-    Aq :: A
-    Bq :: A
-    Cq :: A
+    Aq :: V
+    Bq :: V
+    Cq :: V
     Px :: A
     oldPx1 :: A
     oldPx2 :: A
@@ -168,26 +167,26 @@ struct Material2D{A, B, C, F, T}
     oldPz2 :: A
     # Kerr:
     kerr :: Bool
-    Mk :: B
+    Mk :: T
     # Plasma:
     plasma :: Bool
     ionrate :: F
     Rava :: T
     rho0 :: T
-    rho :: C   # electron density
-    drho :: C   # time derivative of electron density
+    rho :: B   # electron density
+    drho :: B   # time derivative of electron density
     Ap :: T
     Bp :: T
     Cp :: T
-    Ppx :: C
-    oldPpx1 :: C
-    oldPpx2 :: C
-    Ppz :: C
-    oldPpz1 :: C
-    oldPpz2 :: C
+    Ppx :: B
+    oldPpx1 :: B
+    oldPpx2 :: B
+    Ppz :: B
+    oldPpz1 :: B
+    oldPpz2 :: B
     Ma :: T
-    Pax :: C
-    Paz :: C
+    Pax :: B
+    Paz :: B
 end
 
 @adapt_structure Material2D
@@ -210,7 +209,8 @@ function material_init(material_data, grid::Grid2D, dt)
     if isnothing(chi)
         dispersion = false
 
-        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
+        # to avoid issues with CUDA kernels, the types of variables should be the same
+        # for all logical branches:
         Aq, Bq, Cq = (zeros(1) for i=1:3)
         Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
         Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
@@ -222,12 +222,9 @@ function material_init(material_data, grid::Grid2D, dt)
         end
 
         Nq = length(chi)
-        Aq, Bq, Cq = (zeros(Nq,Nx,Nz) for i=1:3)
-        for iz=1:Nz, ix=1:Nx, iq=1:Nq
-            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-            Aq[iq,ix,iz] = geometry(x[ix],z[iz]) * Aq0
-            Bq[iq,ix,iz] = geometry(x[ix],z[iz]) * Bq0
-            Cq[iq,ix,iz] = geometry(x[ix],z[iz]) * Cq0
+        Aq, Bq, Cq = (zeros(Nq) for i=1:3)
+        for iq=1:Nq
+            Aq[iq], Bq[iq], Cq[iq] = ade_coefficients(chi[iq], dt)
         end
         Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Nz) for i=1:3)
         Pz, oldPz1, oldPz2 = (zeros(Nq,Nx,Nz) for i=1:3)
@@ -236,10 +233,10 @@ function material_init(material_data, grid::Grid2D, dt)
     # Kerr:
     if isnothing(chi3)
         kerr = false
-        Mk = zeros(1)
+        Mk = 0.0
     else
         kerr = true
-        Mk = [geometry(x[ix],z[iz]) ? EPS0*chi3 : 0 for ix=1:Nx, iz=1:Nz]
+        Mk = EPS0 * chi3
     end
 
     # Plasma:
@@ -264,21 +261,22 @@ function material_init(material_data, grid::Grid2D, dt)
     end
 
     material = Material2D(
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2,
-        kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
-        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
+        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2, kerr, Mk,
+        plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz,
+        oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
     return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material3D{A, B, C, F, T}
+struct Material3D{G, V, A, B, F, T}
+    geometry :: G
     # Linear dispersion:
     dispersion :: Bool
-    Aq :: A
-    Bq :: A
-    Cq :: A
+    Aq :: V
+    Bq :: V
+    Cq :: V
     Px :: A
     oldPx1 :: A
     oldPx2 :: A
@@ -290,30 +288,30 @@ struct Material3D{A, B, C, F, T}
     oldPz2 :: A
     # Kerr:
     kerr :: Bool
-    Mk :: B
+    Mk :: T
     # Plasma:
     plasma :: Bool
     ionrate :: F
     Rava :: T
     rho0 :: T
-    rho :: C   # electron density
-    drho :: C   # time derivative of electron density
+    rho :: B   # electron density
+    drho :: B   # time derivative of electron density
     Ap :: T
     Bp :: T
     Cp :: T
-    Ppx :: C
-    oldPpx1 :: C
-    oldPpx2 :: C
-    Ppy :: C
-    oldPpy1 :: C
-    oldPpy2 :: C
-    Ppz :: C
-    oldPpz1 :: C
-    oldPpz2 :: C
+    Ppx :: B
+    oldPpx1 :: B
+    oldPpx2 :: B
+    Ppy :: B
+    oldPpy1 :: B
+    oldPpy2 :: B
+    Ppz :: B
+    oldPpz1 :: B
+    oldPpz2 :: B
     Ma :: T
-    Pax :: C
-    Pay :: C
-    Paz :: C
+    Pax :: B
+    Pay :: B
+    Paz :: B
 end
 
 @adapt_structure Material3D
@@ -336,7 +334,8 @@ function material_init(material_data, grid::Grid3D, dt)
     if isnothing(chi)
         dispersion = false
 
-        # to avoid issues with CUDA kernel we use zeros(1) instead of nothing
+        # to avoid issues with CUDA kernels, the variables should have the same type for all
+        # logical branches:
         Aq, Bq, Cq = (zeros(1) for i=1:3)
         Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
         Py, oldPy1, oldPy2 = (zeros(1) for i=1:3)
@@ -349,12 +348,9 @@ function material_init(material_data, grid::Grid3D, dt)
         end
 
         Nq = length(chi)
-        Aq, Bq, Cq = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
-        for iz=1:Nz, iy=1:Ny, ix=1:Nx, iq=1:Nq
-            Aq0, Bq0, Cq0 = ade_coefficients(chi[iq], dt)
-            Aq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Aq0
-            Bq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Bq0
-            Cq[iq,ix,iy,iz] = geometry(x[ix],y[iy],z[iz]) * Cq0
+        Aq, Bq, Cq = (zeros(Nq) for i=1:3)
+        for iq=1:Nq
+            Aq[iq], Bq[iq], Cq[iq] = ade_coefficients(chi[iq], dt)
         end
         Px, oldPx1, oldPx2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
         Py, oldPy1, oldPy2 = (zeros(Nq,Nx,Ny,Nz) for i=1:3)
@@ -364,10 +360,10 @@ function material_init(material_data, grid::Grid3D, dt)
     # Kerr:
     if isnothing(chi3)
         kerr = false
-        Mk = zeros(1)
+        Mk = 0.0
     else
         kerr = true
-        Mk = [geometry(x[ix],y[iy],z[iz]) ? EPS0*chi3 : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+        Mk = EPS0 * chi3
     end
 
     # Plasma:
@@ -398,10 +394,9 @@ function material_init(material_data, grid::Grid3D, dt)
     end
 
     material = Material3D(
-        dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2,
-        kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
-        Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
-        Ma, Pax, Pay, Paz,
+        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz,
+        oldPz1, oldPz2, kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx,
+        oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Pay, Paz,
     )
     return eps, mu, sigma, material
 end
