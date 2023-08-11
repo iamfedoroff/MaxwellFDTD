@@ -210,8 +210,9 @@ end
             (; ionrate, Rava, rho0, rho, drho,
                Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
 
+            ksi = convert(eltype(Ex), 1*EPS0*C0/2)   # 1/2 from <cos^2(t)>
             E2 = abs2(Ex[iz])
-            II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
+            II = ksi * E2   # intensity
 
             # Plasma current:
             oldPpx2[iz] = oldPpx1[iz]
@@ -412,8 +413,9 @@ end
             (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
 
+            ksi = convert(eltype(Ex), 1*EPS0*C0/2)   # 1/2 from <cos^2(t)>
             E2 = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
-            II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
+            II = ksi * E2   # intensity
 
             # Plasma current:
             oldPpx2[ix,iz] = oldPpx1[ix,iz]
@@ -729,8 +731,9 @@ end
                Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
                Ma, Pax, Pay, Paz) = material
 
+            ksi = convert(eltype(Ex), 1*EPS0*C0/2)   # 1/2 from <cos^2(t)>
             E2 = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
-            II = 1 * EPS0 * C0 / 2 * E2   # intensity (1/2 = <cos^2(t)>)
+            II = ksi * E2   # intensity
 
             # Plasma current:
             oldPpx2[ix,iy,iz] = oldPpx1[ix,iy,iz]
