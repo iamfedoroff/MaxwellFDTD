@@ -191,10 +191,13 @@ end
         # update D .........................................................................
         Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz)
 
-        # update P .........................................................................
+        # materials ........................................................................
+        isgeometry = geometry(z[iz])
+
         sumPx = zero(eltype(Ex))
 
-        if dispersion && geometry(z[iz])
+        # linear polarization:
+        if dispersion && isgeometry
             (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -205,8 +208,8 @@ end
             end
         end
 
-        #  Plasma --------------------------------------------------------------------------
-        if plasma && geometry(z[iz])
+        # plasma:
+        if plasma && isgeometry
             (; ionrate, Rava, rho0, rho, drho,
                Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
 
@@ -214,13 +217,13 @@ end
             E2 = abs2(Ex[iz])
             II = ksi * E2   # intensity
 
-            # Plasma current:
+            # plasma current:
             oldPpx2[iz] = oldPpx1[iz]
             oldPpx1[iz] = Ppx[iz]
             Ppx[iz] = Ap * Ppx[iz] + Bp * oldPpx2[iz] + Cp * rho[iz]*rho0 * Ex[iz]
             sumPx += Ppx[iz]
 
-            # Multi-photon ionization losses:
+            # multi-photon ionization losses:
             if E2 >= eps(one(E2))
                 invE2 = 1 / E2
             else
@@ -229,7 +232,7 @@ end
             Pax[iz] += Ma * drho[iz]*rho0 * Ex[iz] * invE2
             sumPx += Pax[iz]
 
-            # Electron density:
+            # electron density:
             R1 = ionrate(II)
             R2 = Rava * E2
             if R2 == 0
@@ -244,7 +247,7 @@ end
         # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
         DmPx = Dx[iz] - sumPx
 
-        if kerr && geometry(z[iz])
+        if kerr && isgeometry
             (; Mk) = material
 
             # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
@@ -385,11 +388,14 @@ end
         Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] + Md2[ix,iz] * (0 - dHyz)
         Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx - 0)
 
-        # update P .........................................................................
+        # materials ........................................................................
+        isgeometry = geometry(x[ix], z[iz])
+
         sumPx = zero(eltype(Ex))
         sumPz = zero(eltype(Ez))
 
-        if dispersion && geometry(x[ix], z[iz])
+        # linear polarization:
+        if dispersion && isgeometry
             (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -408,8 +414,8 @@ end
             end
         end
 
-        # Plasma ...........................................................................
-        if plasma && geometry(x[ix], z[iz])
+        # plasma:
+        if plasma && isgeometry
             (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
 
@@ -417,7 +423,7 @@ end
             E2 = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
             II = ksi * E2   # intensity
 
-            # Plasma current:
+            # plasma current:
             oldPpx2[ix,iz] = oldPpx1[ix,iz]
             oldPpx1[ix,iz] = Ppx[ix,iz]
             Ppx[ix,iz] = Ap * Ppx[ix,iz] +
@@ -431,7 +437,7 @@ end
             sumPx += Ppx[ix,iz]
             sumPz += Ppz[ix,iz]
 
-            # Multi-photon ionization losses:
+            # multi-photon ionization losses:
             if E2 >= eps(one(E2))
                 invE2 = 1 / E2
             else
@@ -442,7 +448,7 @@ end
             sumPx += Pax[ix,iz]
             sumPz += Paz[ix,iz]
 
-            # Electron density:
+            # electron density:
             R1 = ionrate(II)
             R2 = Rava * E2
             if R2 == 0
@@ -458,7 +464,7 @@ end
         DmPx = Dx[ix,iz] - sumPx
         DmPz = Dz[ix,iz] - sumPz
 
-        if kerr && geometry(x[ix], z[iz])
+        if kerr && isgeometry
             (; Mk) = material
 
             # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
@@ -694,12 +700,15 @@ end
         Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] + Md2[ix,iy,iz] * (dHxz - dHzx)
         Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] + Md2[ix,iy,iz] * (dHyx - dHxy)
 
-        # update P .........................................................................
+        # materials ........................................................................
+        isgeometry = geometry(x[ix], y[iy], z[iz])
+
         sumPx = zero(eltype(Ex))
         sumPy = zero(eltype(Ey))
         sumPz = zero(eltype(Ez))
 
-        if dispersion && geometry(x[ix], y[iy], z[iz])
+        # linear polarization:
+        if dispersion && isgeometry
             (; Aq, Bq, Cq,
                Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
             Nq = size(Px, 1)
@@ -725,8 +734,8 @@ end
             end
         end
 
-        # Plasma ...........................................................................
-        if plasma && geometry(x[ix], y[iy], z[iz])
+        # plasma:
+        if plasma && isgeometry
             (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
                Ma, Pax, Pay, Paz) = material
@@ -735,7 +744,7 @@ end
             E2 = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
             II = ksi * E2   # intensity
 
-            # Plasma current:
+            # plasma current:
             oldPpx2[ix,iy,iz] = oldPpx1[ix,iy,iz]
             oldPpx1[ix,iy,iz] = Ppx[ix,iy,iz]
             Ppx[ix,iy,iz] = Ap * Ppx[ix,iy,iz] +
@@ -755,7 +764,7 @@ end
             sumPy += Ppy[ix,iy,iz]
             sumPz += Ppz[ix,iy,iz]
 
-            # Multi-photon ionization losses:
+            # multi-photon ionization losses:
             if E2 >= eps(one(E2))
                 invE2 = 1 / E2
             else
@@ -768,7 +777,7 @@ end
             sumPy += Pay[ix,iy,iz]
             sumPz += Paz[ix,iy,iz]
 
-            # Electron density:
+            # electron density:
             R1 = ionrate(II)
             R2 = Rava * E2
             if R2 == 0
@@ -785,7 +794,7 @@ end
         DmPy = Dy[ix,iy,iz] - sumPy
         DmPz = Dz[ix,iy,iz] - sumPz
 
-        if kerr && geometry(x[ix], y[iy], z[iz])
+        if kerr && isgeometry
             (; Mk) = material
 
             # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
