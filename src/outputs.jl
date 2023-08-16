@@ -8,10 +8,15 @@ mutable struct Output{S, R, I, A}
 end
 
 
-function write_output_variables(out)
+function write_output_variables(out, model)
+    (; material) = model
+    (; plasma, rho, rho0) = material
     (; fname, Sa) = out
     HDF5.h5open(fname, "r+") do fp
-        fp["Sa"] = collect(Sa)
+        fp["Sa"] = collect(Sa)   # averaged poynting vector
+        if plasma
+            fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
+        end
     end
     return nothing
 end

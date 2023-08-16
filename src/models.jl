@@ -105,7 +105,7 @@ function solve!(
         end
     end
 
-    write_output_variables(out)
+    write_output_variables(out, model)
 
     print_timer()
 
