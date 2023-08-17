@@ -392,11 +392,11 @@ end
 
 
 function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
-    (; fname, ipts) = out
+    (; fname, isviewpoints, ipts) = out
     (; field, material) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; plasma, rho, rho0) = material
-    if !isnothing(ipts)
+    if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
                 group = fp["viewpoints/$n"]
