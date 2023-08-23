@@ -42,7 +42,7 @@ function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=nothin
 
     # Update coefficients for H, E and D fields:
     Mh = @. dt / (MU0*mu)
-    Me = @. EPS0*eps
+    Me = @. 1 / (EPS0*eps)
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
@@ -244,28 +244,24 @@ end
             drho[iz] = R1 * (1 - rho[iz])
         end
 
-        # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
+        # update E (Me=1/(EPS0*eps), Mk2=EPS0*chi2, Mk3=EPS0*chi3) .........................
         DmPx = Dx[iz] - sumPx
 
         if kerr && isgeometry
-            (; Mk) = material
-
-            # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
-            # Ex[iz] = DmPx / (Me[iz] + Mk * Ex[iz]^2)
-
-            # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
-            # Ex[iz] = (DmPx + 2*Mk * Ex[iz]^3) / (Me[iz] + 3*Mk * Ex[iz]^2)
+            (; Mk2, Mk3) = material
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[iz] = (1 + 2*Mk / Me[iz]^3 * DmPx^2) /
-                     (1 + 3*Mk / Me[iz]^3 * DmPx^2) * DmPx / Me[iz]
+            Ex[iz] =
+                (1 + 1*Mk2 * Me[iz]^2 * DmPx + 2*Mk3 * Me[iz]^3 * DmPx^2) /
+                (1 + 2*Mk2 * Me[iz]^2 * DmPx + 3*Mk3 * Me[iz]^3 * DmPx^2) *
+                DmPx * Me[iz]
         else
-            Ex[iz] = DmPx / Me[iz]
+            Ex[iz] = DmPx * Me[iz]
         end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[iz] += dt / Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
+        # Ex[iz] += dt * Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
     end
 end
 function update_E!(model::Model{F}) where F <: Field1D
@@ -460,35 +456,31 @@ end
             drho[ix,iz] = R1 * (1 - rho[ix,iz])
         end
 
-        # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
+        # update E (Me=1/(EPS0*eps), Mk2=EPS0*chi2, Mk3=EPS0*chi3) .........................
         DmPx = Dx[ix,iz] - sumPx
         DmPz = Dz[ix,iz] - sumPz
 
         if kerr && isgeometry
-            (; Mk) = material
-
-            # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
-            # Ex[ix,iz] = DmPx / (Me[ix,iz] + Mk * Ex[ix,iz]^2)
-            # Ez[ix,iz] = DmPz / (Me[ix,iz] + Mk * Ez[ix,iz]^2)
-
-            # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
-            # Ex[ix,iz] = (DmPx + 2*Mk * Ex[ix,iz]^3) / (Me[ix,iz] + 3*Mk * Ex[ix,iz]^2)
-            # Ez[ix,iz] = (DmPz + 2*Mk * Ez[ix,iz]^3) / (Me[ix,iz] + 3*Mk * Ez[ix,iz]^2)
+            (; Mk2, Mk3) = material
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[ix,iz] = (1 + 2*Mk / Me[ix,iz]^3 * DmPx^2) /
-                        (1 + 3*Mk / Me[ix,iz]^3 * DmPx^2) * DmPx / Me[ix,iz]
-            Ez[ix,iz] = (1 + 2*Mk / Me[ix,iz]^3 * DmPz^2) /
-                        (1 + 3*Mk / Me[ix,iz]^3 * DmPz^2) * DmPz / Me[ix,iz]
+            Ex[ix,iz] =
+                (1 + 1*Mk2 * Me[ix,iz]^2 * DmPx + 2*Mk3 * Me[ix,iz]^3 * DmPx^2) /
+                (1 + 2*Mk2 * Me[ix,iz]^2 * DmPx + 3*Mk3 * Me[ix,iz]^3 * DmPx^2) *
+                DmPx * Me[ix,iz]
+            Ez[ix,iz] =
+                (1 + 1*Mk2 * Me[ix,iz]^2 * DmPz + 2*Mk3 * Me[ix,iz]^3 * DmPz^2) /
+                (1 + 2*Mk2 * Me[ix,iz]^2 * DmPz + 3*Mk3 * Me[ix,iz]^3 * DmPz^2) *
+                DmPz * Me[ix,iz]
         else
-            Ex[ix,iz] = DmPx / Me[ix,iz]
-            Ez[ix,iz] = DmPz / Me[ix,iz]
+            Ex[ix,iz] = DmPx * Me[ix,iz]
+            Ez[ix,iz] = DmPz * Me[ix,iz]
         end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[ix,iz] += dt / Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
-        # Ez[ix,iz] += dt / Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
+        # Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
+        # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
     end
 end
 function update_E!(model::Model{F}) where F <: Field2D
@@ -789,45 +781,38 @@ end
             drho[ix,iy,iz] = R1 * (1 - rho[ix,iy,iz])
         end
 
-        # update E (Me=EPS0*eps, Mk=EPS0*chi3) .............................................
+        # update E (Me=1/(EPS0*eps), Mk2=EPS0*chi2, Mk3=EPS0*chi3) .........................
         DmPx = Dx[ix,iy,iz] - sumPx
         DmPy = Dy[ix,iy,iz] - sumPy
         DmPz = Dz[ix,iy,iz] - sumPz
 
         if kerr && isgeometry
-            (; Mk) = material
-
-            # Kerr by [I.S. Maksymov, IEEE Antennas Wirel. Propag. Lett., 10, 143 (2011)]
-            # Ex[ix,iy,iz] = DmPx / (Me[ix,iy,iz] + Mk * Ex[ix,iy,iz]^2)
-            # Ey[ix,iy,iz] = DmPy / (Me[ix,iy,iz] + Mk * Ey[ix,iy,iz]^2)
-            # Ez[ix,iy,iz] = DmPz / (Me[ix,iy,iz] + Mk * Ez[ix,iy,iz]^2)
-
-            # Kerr by [E.P. Kosmidou, Opt. Quantum. Electron, 35, 931 (2003)]
-            # Ex[ix,iy,iz] = (DmPx + 2*Mk * Ex[ix,iy,iz]^3) /
-            #                (Me[ix,iy,iz] + 3*Mk * Ex[ix,iy,iz]^2)
-            # Ey[ix,iy,iz] = (DmPy + 2*Mk * Ey[ix,iy,iz]^3) /
-            #                (Me[ix,iy,iz] + 3*Mk * Ey[ix,iy,iz]^2)
-            # Ez[ix,iy,iz] = (DmPz + 2*Mk * Ez[ix,iy,iz]^3) /
-            #                (Me[ix,iy,iz] + 3*Mk * Ez[ix,iy,iz]^2)
+            (; Mk2, Mk3) = material
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[ix,iy,iz] = (1 + 2*Mk / Me[ix,iy,iz]^3 * DmPx^2) /
-                           (1 + 3*Mk / Me[ix,iy,iz]^3 * DmPx^2) * DmPx / Me[ix,iy,iz]
-            Ey[ix,iy,iz] = (1 + 2*Mk / Me[ix,iy,iz]^3 * DmPy^2) /
-                           (1 + 3*Mk / Me[ix,iy,iz]^3 * DmPy^2) * DmPy / Me[ix,iy,iz]
-            Ez[ix,iy,iz] = (1 + 2*Mk / Me[ix,iy,iz]^3 * DmPz^2) /
-                           (1 + 3*Mk / Me[ix,iy,iz]^3 * DmPz^2) * DmPz / Me[ix,iy,iz]
+            Ex[ix,iy,iz] =
+                (1 + 1*Mk2 * Me[ix,iy,iz]^2 * DmPx + 2*Mk3 * Me[ix,iy,iz]^3 * DmPx^2) /
+                (1 + 2*Mk2 * Me[ix,iy,iz]^2 * DmPx + 3*Mk3 * Me[ix,iy,iz]^3 * DmPx^2) *
+                DmPx * Me[ix,iy,iz]
+            Ey[ix,iy,iz] =
+                (1 + 1*Mk2 * Me[ix,iy,iz]^2 * DmPy + 2*Mk3 * Me[ix,iy,iz]^3 * DmPy^2) /
+                (1 + 2*Mk2 * Me[ix,iy,iz]^2 * DmPy + 3*Mk3 * Me[ix,iy,iz]^3 * DmPy^2) *
+                DmPy * Me[ix,iy,iz]
+            Ez[ix,iy,iz] =
+                (1 + 1*Mk2 * Me[ix,iy,iz]^2 * DmPz + 2*Mk3 * Me[ix,iy,iz]^3 * DmPz^2) /
+                (1 + 2*Mk2 * Me[ix,iy,iz]^2 * DmPz + 3*Mk3 * Me[ix,iy,iz]^3 * DmPz^2) *
+                DmPz * Me[ix,iy,iz]
         else
-            Ex[ix,iy,iz] = DmPx / Me[ix,iy,iz]
-            Ey[ix,iy,iz] = DmPy / Me[ix,iy,iz]
-            Ez[ix,iy,iz] = DmPz / Me[ix,iy,iz]
+            Ex[ix,iy,iz] = DmPx * Me[ix,iy,iz]
+            Ey[ix,iy,iz] = DmPy * Me[ix,iy,iz]
+            Ez[ix,iy,iz] = DmPz * Me[ix,iy,iz]
         end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[ix,iy,iz] += dt / Me[ix,iy,iz] * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
-        # Ey[ix,iy,iz] += dt / Me[ix,iy,iz] * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
-        # Ez[ix,iy,iz] += dt / Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
+        # Ex[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
+        # Ey[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
+        # Ez[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
     end
 end
 function update_E!(model::Model{F}) where F <: Field3D

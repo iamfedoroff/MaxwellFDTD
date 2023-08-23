@@ -1,19 +1,20 @@
-struct MaterialData{G, T, C, C3, P}
+struct MaterialData{G, T, C, C2, C3, P}
     geometry :: G
     eps :: T
     mu :: T
     sigma :: T
     chi :: C
+    chi2 :: C2
     chi3 :: C3
     plasma_data :: P
 end
 
 
 function Material(;
-    geometry, eps=1, mu=1, sigma=0, chi=nothing, chi3=nothing, plasma=nothing,
+    geometry, eps=1, mu=1, sigma=0, chi=nothing, chi2=nothing, chi3=nothing, plasma=nothing,
 )
     eps, mu, sigma = promote(eps, mu, sigma)
-    return MaterialData(geometry, eps, mu, sigma, chi, chi3, plasma)
+    return MaterialData(geometry, eps, mu, sigma, chi, chi2, chi3, plasma)
 end
 
 
@@ -57,7 +58,8 @@ struct Material1D{G, V, A, B, F, T}
     oldPx2 :: A
     # Kerr:
     kerr :: Bool
-    Mk :: T
+    Mk2 :: T
+    Mk3 :: T
     # Plasma:
     plasma :: Bool
     ionrate :: F
@@ -82,7 +84,7 @@ function material_init(material_data, grid::Grid1D, dt)
     if isnothing(material_data)
         material_data = Material(geometry = z -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi3, plasma_data) = material_data
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
     (; Nz, z) = grid
 
     # Permittivity, permeability, and conductivity:
@@ -115,12 +117,13 @@ function material_init(material_data, grid::Grid1D, dt)
     end
 
     # Kerr:
-    if isnothing(chi3)
+    if isnothing(chi2) && isnothing(chi3)
         kerr = false
-        Mk = 0.0
+        Mk2, Mk3 = 0.0, 0.0
     else
         kerr = true
-        Mk = EPS0 * chi3
+        isnothing(chi2) ? Mk2 = 0.0 : Mk2 = EPS0*chi2
+        isnothing(chi3) ? Mk3 = 0.0 : Mk3 = EPS0*chi3
     end
 
     # Plasma:
@@ -144,8 +147,8 @@ function material_init(material_data, grid::Grid1D, dt)
     end
 
     material = Material1D(
-        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, kerr, Mk, plasma, ionrate,
-        Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax,
+        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, kerr, Mk2, Mk3, plasma,
+        ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax,
     )
     return eps, mu, sigma, material
 end
@@ -167,7 +170,8 @@ struct Material2D{G, V, A, B, F, T}
     oldPz2 :: A
     # Kerr:
     kerr :: Bool
-    Mk :: T
+    Mk2 :: T
+    Mk3 :: T
     # Plasma:
     plasma :: Bool
     ionrate :: F
@@ -196,7 +200,7 @@ function material_init(material_data, grid::Grid2D, dt)
     if isnothing(material_data)
         material_data = Material(geometry = (x,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi3, plasma_data) = material_data
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
     (; Nx, Nz, x, z) = grid
 
     # Permittivity, permeability, and conductivity:
@@ -231,12 +235,13 @@ function material_init(material_data, grid::Grid2D, dt)
     end
 
     # Kerr:
-    if isnothing(chi3)
+    if isnothing(chi2) && isnothing(chi3)
         kerr = false
-        Mk = 0.0
+        Mk2, Mk3 = 0.0, 0.0
     else
         kerr = true
-        Mk = EPS0 * chi3
+        isnothing(chi2) ? Mk2 = 0.0 : Mk2 = EPS0*chi2
+        isnothing(chi3) ? Mk3 = 0.0 : Mk3 = EPS0*chi3
     end
 
     # Plasma:
@@ -261,8 +266,8 @@ function material_init(material_data, grid::Grid2D, dt)
     end
 
     material = Material2D(
-        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2, kerr, Mk,
-        plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz,
+        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2, kerr, Mk2,
+        Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz,
         oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
     return eps, mu, sigma, material
@@ -288,7 +293,8 @@ struct Material3D{G, V, A, B, F, T}
     oldPz2 :: A
     # Kerr:
     kerr :: Bool
-    Mk :: T
+    Mk2 :: T
+    Mk3 :: T
     # Plasma:
     plasma :: Bool
     ionrate :: F
@@ -321,7 +327,7 @@ function material_init(material_data, grid::Grid3D, dt)
     if isnothing(material_data)
         material_data = Material(geometry = (x,y,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi3, plasma_data) = material_data
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
     (; Nx, Ny, Nz, x, y, z) = grid
 
     # Permittivity, permeability, and conductivity:
@@ -358,12 +364,13 @@ function material_init(material_data, grid::Grid3D, dt)
     end
 
     # Kerr:
-    if isnothing(chi3)
+    if isnothing(chi2) && isnothing(chi3)
         kerr = false
-        Mk = 0.0
+        Mk2, Mk3 = 0.0, 0.0
     else
         kerr = true
-        Mk = EPS0 * chi3
+        isnothing(chi2) ? Mk2 = 0.0 : Mk2 = EPS0*chi2
+        isnothing(chi3) ? Mk3 = 0.0 : Mk3 = EPS0*chi3
     end
 
     # Plasma:
@@ -395,8 +402,9 @@ function material_init(material_data, grid::Grid3D, dt)
 
     material = Material3D(
         geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz,
-        oldPz1, oldPz2, kerr, Mk, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx,
-        oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Pay, Paz,
+        oldPz1, oldPz2, kerr, Mk2, Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
+        Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Pay,
+        Paz,
     )
     return eps, mu, sigma, material
 end
