@@ -1,10 +1,12 @@
+abstract type SourceData end
+
 abstract type Source end
 
 
 # ******************************************************************************************
 # Soft Source
 # ******************************************************************************************
-struct SoftSourceData{FG, FA, FP, FW, P, T, S}
+struct SoftSourceData{FG, FA, FP, FW, P, T, S} <: SourceData
     geometry :: FG
     amplitude :: FA
     phase :: FP
@@ -140,7 +142,7 @@ end
 # ******************************************************************************************
 # Hard Source
 # ******************************************************************************************
-struct HardSourceData{FG, FA, FP, FW, P, T, S}
+struct HardSourceData{FG, FA, FP, FW, P, T, S}  <: SourceData
     geometry :: FG
     amplitude :: FA
     phase :: FP
@@ -196,7 +198,7 @@ end
 # ******************************************************************************************
 # TFSF Source
 # ******************************************************************************************
-struct TFSFSourceData{S, P}
+struct TFSFSourceData{S, P}  <: SourceData
     fname :: S
     tfsf_box :: P
 end

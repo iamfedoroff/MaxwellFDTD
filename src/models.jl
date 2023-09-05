@@ -1,6 +1,6 @@
 struct Model{F, S, P, M, T, R, A}
     field :: F
-    source :: S
+    sources :: S
     pml :: P
     material :: M
     # Time grid:
@@ -25,7 +25,10 @@ function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=nothin
     t = range(start=0, step=dt, stop=tmax)
     Nt = length(t)
 
-    source = source_init(source_data, field, t)
+    if source_data isa SourceData
+        source_data = (source_data,)
+    end
+    sources = Tuple([source_init(sd, field, t) for sd in source_data])
 
     pml = PML(grid, pml_box, dt)
 
@@ -46,14 +49,16 @@ function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=nothin
     Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
     Md2 = @. dt / (1 + sigma*dt/2)
 
-    return Model(field, source, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
+    return Model(field, sources, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
 function step!(model, it)
     update_H!(model)
     update_E!(model)
-    add_source!(model, model.source, it)
+    for source in model.sources
+        add_source!(model, source, it)
+    end
     return nothing
 end
 
