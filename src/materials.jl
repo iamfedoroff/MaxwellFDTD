@@ -87,10 +87,16 @@ function material_init(material_data, grid::Grid1D, dt)
     (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
     (; Nz, z) = grid
 
+    if typeof(geometry) <: Function
+        geometry = [Bool(geometry(z[iz])) for iz=1:Nz]
+    else
+        geometry = [Bool(geometry[iz]) for iz=1:Nz]
+    end
+
     # Permittivity, permeability, and conductivity:
-    eps = [geometry(z[iz]) ? eps : 1 for iz=1:Nz]
-    mu = [geometry(z[iz]) ? mu : 1 for iz=1:Nz]
-    sigma = [geometry(z[iz]) ? sigma : 0 for iz=1:Nz]
+    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
+    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
+    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Variables for ADE dispersion calculation:
@@ -203,10 +209,16 @@ function material_init(material_data, grid::Grid2D, dt)
     (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
     (; Nx, Nz, x, z) = grid
 
+    if typeof(geometry) <: Function
+        geometry = [Bool(geometry(x[ix],z[iz])) for ix=1:Nx, iz=1:Nz]
+    else
+        geometry = [Bool(geometry[ix,iz]) for ix=1:Nx, iz=1:Nz]
+    end
+
     # Permittivity, permeability, and conductivity:
-    eps = [geometry(x[ix],z[iz]) ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry(x[ix],z[iz]) ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry(x[ix],z[iz]) ? sigma : 0 for ix=1:Nx, iz=1:Nz]
+    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
+    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
+    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Variables for ADE dispersion calculation:
@@ -330,10 +342,16 @@ function material_init(material_data, grid::Grid3D, dt)
     (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
     (; Nx, Ny, Nz, x, y, z) = grid
 
+    if typeof(geometry) <: Function
+        geometry = [Bool(geometry(x[ix],y[iy],z[iz])) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    else
+        geometry = [Bool(geometry[ix,iy,iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+
     # Permittivity, permeability, and conductivity:
-    eps = [geometry(x[ix],y[iy],z[iz]) ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    mu = [geometry(x[ix],y[iy],z[iz]) ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    sigma = [geometry(x[ix],y[iy],z[iz]) ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    eps = [geometry[ix,iy,iz] ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    mu = [geometry[ix,iy,iz] ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    sigma = [geometry[ix,iy,iz] ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Variables for ADE dispersion calculation:

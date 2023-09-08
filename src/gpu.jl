@@ -12,6 +12,8 @@ adapt_storage(::CPU{T}, x::Array) where T = Array{T}(x)
 adapt_storage(::GPU{T}, x::Array) where T = CuArray{T}(x)
 adapt_storage(::CPU{T}, x::Array{TA}) where {T, TA<:Complex} = Array{Complex{T}}(x)
 adapt_storage(::GPU{T}, x::Array{TA}) where {T, TA<:Complex} = CuArray{Complex{T}}(x)
+adapt_storage(::CPU, x::Array{<:Bool}) = Array{Bool}(x)
+adapt_storage(::GPU, x::Array{<:Bool}) = CuArray{Bool}(x)
 
 
 # Arrays of indices:

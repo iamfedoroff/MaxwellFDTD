@@ -166,7 +166,7 @@ end
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
     (; field, pml, material, dt, Me, Md1, Md2) = model
     (; grid, Hy, Dx, Ex) = field
-    (; Nz, dz, z) = grid
+    (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; geometry, dispersion, plasma, kerr) = material
 
@@ -197,7 +197,7 @@ end
         Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz)
 
         # materials ........................................................................
-        isgeometry = geometry(z[iz])
+        isgeometry = geometry[iz]
 
         sumPx = zero(eltype(Ex))
 
@@ -342,7 +342,7 @@ end
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
     (; field, pml, material, dt, Me, Md1, Md2) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
-    (; Nx, Nz, dx, dz, x, z) = grid
+    (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
     (; geometry, dispersion, plasma, kerr) = material
 
@@ -390,7 +390,7 @@ end
         Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx - 0)
 
         # materials ........................................................................
-        isgeometry = geometry(x[ix], z[iz])
+        isgeometry = geometry[ix,iz]
 
         sumPx = zero(eltype(Ex))
         sumPz = zero(eltype(Ez))
@@ -610,7 +610,7 @@ end
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
 @kernel function update_E_kernel!(field::Field3D, pml, material, dt, Me, Md1, Md2)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
-    (; Nx, Ny, Nz, dx, dy, dz, x, y, z) = grid
+    (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
@@ -698,7 +698,7 @@ end
         Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] + Md2[ix,iy,iz] * (dHyx - dHxy)
 
         # materials ........................................................................
-        isgeometry = geometry(x[ix], y[iy], z[iz])
+        isgeometry = geometry[ix,iy,iz]
 
         sumPx = zero(eltype(Ex))
         sumPy = zero(eltype(Ey))
