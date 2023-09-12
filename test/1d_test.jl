@@ -1,6 +1,4 @@
-fname = joinpath(@__DIR__, "out.hdf")
-
-grid = Grid1D(zmin=-5e-6, zmax=35e-6, Nz=2001)
+grid = Grid1D(zmin=-5e-6, zmax=55e-6, Nz=2001)
 
 lam0 = 2e-6   # (m) wavelength
 tau0 = 20e-15   # (s) pulse duration
@@ -12,26 +10,27 @@ function waveform(t, p)
     return exp(-(t - dt0)^2 / tau0^2) * cos(w0 * (t - dt0))
 end
 
+amplitude(z) = 1
+
 source = HardSource(
     geometry = z -> abs(z) < grid.dz/2,
-    amplitude = z -> 1,
+    amplitude = amplitude,
     waveform = waveform,
     p = (w0,tau0,dt0),
-    component=:Ex,
+    component = :Ex,
 )
 
-model = Model(grid, source; tmax=230e-15, pml_box=(4e-6,4e-6))
+model = Model(grid, source; tmax=150e-15, pml_box=(4e-6,4e-6))
 
-solve!(model; fname, viewpoints=(30e-6,))
+Eth = @. waveform(model.t[end] - grid.z/C0, ((w0,tau0,dt0),))
 
 
-fp = HDF5.h5open(fname, "r")
-t = HDF5.read(fp, "viewpoints/t")
-z = HDF5.read(fp, "viewpoints/1/point")[1]
-Ex = HDF5.read(fp, "viewpoints/1/Ex")
-HDF5.close(fp)
-rm(fname)
+# CPU:
+smodel = solve!(model; fname, arch=CPU())
+@test isapprox(smodel.field.Ex, Eth; rtol=1e-2)
 
-Eth = @. waveform(t - z/C0, ((w0,tau0,dt0),))
-
-@test isapprox(Ex, Eth; rtol=2e-2)
+# GPU:
+if CUDA.functional()
+    smodel = solve!(model; fname, arch=GPU())
+    @test isapprox(collect(smodel.field.Ex), Eth; rtol=1e-2)
+end
