@@ -114,7 +114,7 @@ function solve!(
 
     print_timer()
 
-    return nothing
+    return model
 end
 
 
