@@ -1,218 +1,214 @@
-abstract type SourceData end
-
 abstract type Source end
+
+abstract type SourceStruct end
 
 
 # ******************************************************************************************
 # Soft Source
 # ******************************************************************************************
-struct SoftSourceData{FG, FA, FP, FW, P, T, S} <: SourceData
-    geometry :: FG
-    amplitude :: FA
-    phase :: FP
-    waveform :: FW
+struct SoftSource{G, W, P, C} <: Source
+    geometry :: G
+    waveform :: W
     p :: P
-    frequency :: T
-    component :: S
+    component :: C
 end
 
 
-struct SoftSource{C, A, F, P} <: Source
+function SoftSource(; geometry, waveform, p=nothing, component)
+    return SoftSource(geometry, waveform, p, component)
+end
+
+
+# ------------------------------------------------------------------------------------------
+struct SoftSourceStruct{C, W, P} <: SourceStruct
     isrc :: C
-    Amp :: A
-    Phi :: A
-    waveform :: F
+    waveform :: W
     p :: P
     icomp :: Int
 end
 
-@adapt_structure SoftSource
+@adapt_structure SoftSourceStruct
 
 
-function SoftSource(;
-    geometry, amplitude=nothing, phase=nothing, frequency=nothing, waveform, p, component,
-)
-    if !isnothing(phase) && isnothing(frequency)
-        error(
-            "I need to know the source frequency in order to convert its phase into " *
-            "a proper time delay"
-        )
-    end
-    return SoftSourceData(geometry, amplitude, phase, waveform, p, frequency, component)
-end
-
-
-function add_source!(model, source::SoftSource, it)
-    (; field, t) = model
-    (; isrc, icomp, Amp, Phi, waveform, p) = source
-    FC = getfield(field, icomp)
-    @views @. FC[isrc] = FC[isrc] + Amp * waveform(t[it] - Phi, (p,))
+function SourceStruct(source::SoftSource, field, t)
+    (; geometry, waveform, p, component) = source
+    (; grid) = field
+    isrc = geometry2indices(geometry, grid)
+    icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
+    return SoftSourceStruct(isrc, waveform, p, icomp)
 end
 
 
 # ------------------------------------------------------------------------------------------
-function source_init(source_data::SoftSourceData, field::Field1D, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
-    (; grid) = field
+@kernel function add_source_kernel!(source::SoftSourceStruct, FC, grid::Grid1D, t)
+    (; waveform, p, isrc) = source
     (; z) = grid
-
-    if isnothing(amplitude)
-        amplitude = z -> 1
+    ic = @index(Global)
+    @inbounds begin
+        iz = isrc[ic]
+        if isnothing(p)
+            FC[iz] = FC[iz] + waveform(z[iz], t)
+        else
+            FC[iz] = FC[iz] + waveform(z[iz], t, p)
+        end
     end
-    if isnothing(phase)
-        phase = z -> 0
-        frequency = 1
-    end
-
-    geom = @. geometry(z)
-    isrc = findall(geom)
-
-    Amp, Phi = zeros(size(isrc)), zeros(size(isrc))
-    for (i, iz) in enumerate(isrc)
-        Amp[i] = amplitude(z[iz])
-        Phi[i] = phase(z[iz]) / frequency
-    end
-
-    icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
-
-    return SoftSource(isrc, Amp, Phi, waveform, p, icomp)
 end
 
 
-# ------------------------------------------------------------------------------------------
-function source_init(source_data::SoftSourceData, field::Field2D, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
-    (; grid) = field
-    (; Nx, Nz, x, z) = grid
-
-    if isnothing(amplitude)
-        amplitude = (x,z) -> 1
+@kernel function add_source_kernel!(source::SoftSourceStruct, FC, grid::Grid2D, t)
+    (; waveform, p, isrc) = source
+    (; x, z) = grid
+    ic = @index(Global)
+    @inbounds begin
+        ix, iz = isrc[ic][1], isrc[ic][2]
+        if isnothing(p)
+            FC[ix,iz] = FC[ix,iz] + waveform(x[ix], z[iz], t)
+        else
+            FC[ix,iz] = FC[ix,iz] + waveform(x[ix], z[iz], t, p)
+        end
     end
-    if isnothing(phase)
-        phase = (x,z) -> 0
-        frequency = 1
-    end
-
-    geom = [geometry(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz]
-    isrc = findall(geom)
-
-    Amp, Phi = zeros(size(isrc)), zeros(size(isrc))
-    for (i, ici) in enumerate(isrc)
-        ix, iz = ici[1], ici[2]
-        Amp[i] = amplitude(x[ix], z[iz])
-        Phi[i] = phase(x[ix], z[iz]) / frequency
-    end
-
-    icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
-
-    return SoftSource(isrc, Amp, Phi, waveform, p, icomp)
 end
 
 
-# ------------------------------------------------------------------------------------------
-function source_init(source_data::SoftSourceData, field::Field3D, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
+@kernel function add_source_kernel!(source::SoftSourceStruct, FC, grid::Grid3D, t)
+    (; waveform, p, isrc) = source
+    (; x, y, z) = grid
+    ic = @index(Global)
+    @inbounds begin
+        ix, iy, iz = isrc[ic][1], isrc[ic][2], isrc[ic][3]
+        if isnothing(p)
+            FC[ix,iy,iz] = FC[ix,iy,iz] + waveform(x[ix], y[iy], z[iz], t)
+        else
+            FC[ix,iy,iz] = FC[ix,iy,iz] + waveform(x[ix], y[iy], z[iz], t, p)
+        end
+    end
+end
+
+
+function add_source!(model, source::SoftSourceStruct, it)
+    (; icomp, isrc) = source
+    (; field, t) = model
     (; grid) = field
-    (; Nx, Ny, Nz, x, y, z) = grid
-
-    if isnothing(amplitude)
-        amplitude = (x,y,z) -> 1
-    end
-    if isnothing(phase)
-        phase = (x,y,z) -> 0
-        frequency = 1
-    end
-
-    geom = [geometry(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    isrc = findall(geom)
-
-    Amp, Phi = zeros(size(isrc)), zeros(size(isrc))
-    for (i, ici) in enumerate(isrc)
-        ix, iy, iz = ici[1], ici[2], ici[3]
-        Amp[i] = amplitude(x[ix], y[iy], z[iz])
-        Phi[i] = phase(x[ix], y[iy], z[iz]) / frequency
-    end
-
-    icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
-
-    return SoftSource(isrc, Amp, Phi, waveform, p, icomp)
+    FC = getfield(field, icomp)
+    backend = get_backend(FC)
+    ndrange = size(isrc)
+    add_source_kernel!(backend)(source, FC, grid, t[it]; ndrange)
+    return nothing
 end
 
 
 # ******************************************************************************************
 # Hard Source
 # ******************************************************************************************
-struct HardSourceData{FG, FA, FP, FW, P, T, S}  <: SourceData
-    geometry :: FG
-    amplitude :: FA
-    phase :: FP
-    waveform :: FW
+struct HardSource{G, W, P, C}  <: Source
+    geometry :: G
+    waveform :: W
     p :: P
-    frequency :: T
-    component :: S
+    component :: C
 end
 
 
-struct HardSource{C, A, F, P} <: Source
+function HardSource(; geometry, waveform, p=nothing, component)
+    return HardSource(geometry, waveform, p, component)
+end
+
+
+# ------------------------------------------------------------------------------------------
+struct HardSourceStruct{C, W, P} <: SourceStruct
     isrc :: C
-    Amp :: A
-    Phi :: A
-    waveform :: F
+    waveform :: W
     p :: P
     icomp :: Int
 end
 
-@adapt_structure HardSource
+@adapt_structure HardSourceStruct
 
 
-function HardSource(;
-    geometry, amplitude=nothing, phase=nothing, frequency=nothing, waveform, p, component,
-)
-    if !isnothing(phase) && isnothing(frequency)
-        error(
-            "I need to know the source frequency in order to convert its phase into " *
-            "a proper time delay"
-        )
+function SourceStruct(source::HardSource, field, t)
+    (; geometry, waveform, p, component) = source
+    (; grid) = field
+    isrc = geometry2indices(geometry, grid)
+    icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
+    return HardSourceStruct(isrc, waveform, p, icomp)
+end
+
+
+# ------------------------------------------------------------------------------------------
+@kernel function add_source_kernel!(source::HardSourceStruct, FC, grid::Grid1D, t)
+    (; waveform, p, isrc) = source
+    (; z) = grid
+    ic = @index(Global)
+    @inbounds begin
+        iz = isrc[ic]
+        if isnothing(p)
+            FC[iz] = waveform(z[iz], t)
+        else
+            FC[iz] = waveform(z[iz], t, p)
+        end
     end
-    return HardSourceData(geometry, amplitude, phase, waveform, p, frequency, component)
 end
 
 
-function add_source!(model, source::HardSource, it)
+@kernel function add_source_kernel!(source::HardSourceStruct, FC, grid::Grid2D, t)
+    (; waveform, p, isrc) = source
+    (; x, z) = grid
+    ic = @index(Global)
+    @inbounds begin
+        ix, iz = isrc[ic][1], isrc[ic][2]
+        if isnothing(p)
+            FC[ix,iz] = waveform(x[ix], z[iz], t)
+        else
+            FC[ix,iz] = waveform(x[ix], z[iz], t, p)
+        end
+    end
+end
+
+
+@kernel function add_source_kernel!(source::HardSourceStruct, FC, grid::Grid3D, t)
+    (; waveform, p, isrc) = source
+    (; x, y, z) = grid
+    ic = @index(Global)
+    @inbounds begin
+        ix, iy, iz = isrc[ic][1], isrc[ic][2], isrc[ic][3]
+        if isnothing(p)
+            FC[ix,iy,iz] = waveform(x[ix], y[iy], z[iz], t)
+        else
+            FC[ix,iy,iz] = waveform(x[ix], y[iy], z[iz], t, p)
+        end
+    end
+end
+
+
+function add_source!(model, source::HardSourceStruct, it)
+    (; icomp, isrc) = source
     (; field, t) = model
-    (; isrc, icomp, Amp, Phi, waveform, p) = source
+    (; grid) = field
     FC = getfield(field, icomp)
-    @views @. FC[isrc] = Amp * waveform(t[it] - Phi, (p,))
-end
-
-
-function source_init(source_data::HardSourceData, field, t)
-    (; geometry, amplitude, phase, waveform, p, frequency, component) = source_data
-    sdata = SoftSourceData(geometry, amplitude, phase, waveform, p, frequency, component)
-    ssource = source_init(sdata, field, t)
-    (; isrc, Amp, Phi, waveform, p, icomp) = ssource
-    return HardSource(isrc, Amp, Phi, waveform, p, icomp)
+    backend = get_backend(FC)
+    ndrange = size(isrc)
+    add_source_kernel!(backend)(source, FC, grid, t[it]; ndrange)
+    return nothing
 end
 
 
 # ******************************************************************************************
 # TFSF Source
 # ******************************************************************************************
-struct TFSFSourceData{S, P}  <: SourceData
-    fname :: S
-    tfsf_box :: P
+struct TFSFSource{F, B}  <: Source
+    fname :: F
+    box :: B
 end
 
 
-function TFSFSource(; fname)
-    return TFSFSourceData(fname, nothing)
+function TFSFSource(fname)
+    return TFSFSource(fname, nothing)
 end
 
 
 # ------------------------------------------------------------------------------------------
 # TFSF 1D
 # ------------------------------------------------------------------------------------------
-struct TFSFSource1D{A} <: Source
+struct TFSFSource1D{A} <: SourceStruct
     iz1 :: Int
     iz2 :: Int
     incHy_1 :: A   # 1: z=z1
@@ -224,13 +220,13 @@ end
 @adapt_structure TFSFSource1D
 
 
-function source_init(source_data::TFSFSourceData, field::Field1D, t)
-    (; fname) = source_data
+function SourceStruct(source::TFSFSource, field::Field1D, t)
+    (; fname) = source
     (; grid) = field
     (; z) = grid
 
     fp = HDF5.h5open(fname, "r")
-    tfsf_box = HDF5.read(fp, "tfsf_box")
+    box = HDF5.read(fp, "box")
     tex = HDF5.read(fp, "t")
     incHy_1_ex = HDF5.read(fp, "incHy_1")   # 1: z=z1
     incEx_1_ex = HDF5.read(fp, "incEx_1")
@@ -238,7 +234,7 @@ function source_init(source_data::TFSFSourceData, field::Field1D, t)
     incEx_2_ex = HDF5.read(fp, "incEx_2")
     HDF5.close(fp)
 
-    z1, z2 = tfsf_box
+    z1, z2 = box
     iz1 = argmin(abs.(z .- z1))
     iz2 = argmin(abs.(z .- z2))
 
@@ -289,10 +285,48 @@ function add_source!(model, source::TFSFSource1D, it)
 end
 
 
+function prepare_tfsf_record(model::Model{F}, fname, box) where F <: Field1D
+    (; field, Nt, t) = model
+    (; grid, Hy) = field
+    (; z) = grid
+
+    z1, z2 = box
+    iz1 = argmin(abs.(z .- z1))
+    iz2 = argmin(abs.(z .- z2))
+
+    T = eltype(Hy)
+    HDF5.h5open(fname, "w") do fp
+        fp["t"] = collect(t)
+        fp["box"] = collect(box)
+        HDF5.create_dataset(fp, "incHy_1", T, Nt)   # 1: z=z1
+        HDF5.create_dataset(fp, "incEx_1", T, Nt)
+        HDF5.create_dataset(fp, "incHy_2", T, Nt)   # 2: z=z2
+        HDF5.create_dataset(fp, "incEx_2", T, Nt)
+    end
+
+    return TFSFSource(fname, (iz1, iz2))
+end
+
+
+function write_tfsf_record(model::Model{F}, source, it) where F <: Field1D
+    (; field) = model
+    (; Hy, Ex) = field
+    (; fname, box) = source
+    iz1, iz2 = box
+    HDF5.h5open(fname, "r+") do fp
+        fp["incHy_1"][it] = collect(Hy[iz1-1])   # 1: z=z1
+        fp["incEx_1"][it] = collect(Ex[iz1])
+        fp["incHy_2"][it] = collect(Hy[iz2])   # 2: z=z2
+        fp["incEx_2"][it] = collect(Ex[iz2])
+    end
+    return nothing
+end
+
+
 # ------------------------------------------------------------------------------------------
 # TFSF 2D
 # ------------------------------------------------------------------------------------------
-struct TFSFSource2D{A} <: Source
+struct TFSFSource2D{A} <: SourceStruct
     ix1 :: Int
     ix2 :: Int
     iz1 :: Int
@@ -310,13 +344,13 @@ end
 @adapt_structure TFSFSource2D
 
 
-function source_init(source_data::TFSFSourceData, field::Field2D, t)
-    (; fname) = source_data
+function SourceStruct(source::TFSFSource, field::Field2D, t)
+    (; fname) = source
     (; grid) = field
     (; x, z) = grid
 
     fp = HDF5.h5open(fname, "r")
-    tfsf_box = HDF5.read(fp, "tfsf_box")
+    box = HDF5.read(fp, "box")
     xex = HDF5.read(fp, "x")
     zex = HDF5.read(fp, "z")
     tex = HDF5.read(fp, "t")
@@ -330,7 +364,7 @@ function source_init(source_data::TFSFSourceData, field::Field2D, t)
     incEx_x2_ex = HDF5.read(fp, "incEx_x2")
     HDF5.close(fp)
 
-    x1, x2, z1, z2 = tfsf_box
+    x1, x2, z1, z2 = box
     ix1 = argmin(abs.(x .- x1))
     ix2 = argmin(abs.(x .- x2))
     iz1 = argmin(abs.(z .- z1))
@@ -402,10 +436,63 @@ function add_source!(model, source::TFSFSource2D, it)
 end
 
 
+function prepare_tfsf_record(model::Model{F}, fname, box) where F <: Field2D
+    (; field, Nt, t) = model
+    (; grid, Hy) = field
+    (; x, z) = grid
+
+    x1, x2, z1, z2 = box
+    ix1 = argmin(abs.(x .- x1))
+    ix2 = argmin(abs.(x .- x2))
+    iz1 = argmin(abs.(z .- z1))
+    iz2 = argmin(abs.(z .- z2))
+
+    Nxi = ix2 - ix1
+    Nzi = iz2 - iz1
+
+    T = eltype(Hy)
+    HDF5.h5open(fname, "w") do fp
+        fp["x"] = collect(x[ix1:ix2-1])
+        fp["z"] = collect(z[iz1:iz2-1])
+        fp["t"] = collect(t)
+        fp["box"] = collect(box)
+        HDF5.create_dataset(fp, "incHy_1z", T, (Nzi, Nt))   # 1z: x=x1, z in [z1,z2]
+        HDF5.create_dataset(fp, "incEz_1z", T, (Nzi, Nt))
+        HDF5.create_dataset(fp, "incHy_2z", T, (Nzi, Nt))   # 2z: x=x2, z in [z1,z2]
+        HDF5.create_dataset(fp, "incEz_2z", T, (Nzi, Nt))
+        HDF5.create_dataset(fp, "incHy_x1", T, (Nxi, Nt))   # x1: x in [x1,x2], z=z1
+        HDF5.create_dataset(fp, "incEx_x1", T, (Nxi, Nt))
+        HDF5.create_dataset(fp, "incHy_x2", T, (Nxi, Nt))   # x2: x in [x1,x2], z=z2
+        HDF5.create_dataset(fp, "incEx_x2", T, (Nxi, Nt))
+    end
+
+    return TFSFSource(fname, (ix1, ix2, iz1, iz2))
+end
+
+
+function write_tfsf_record(model::Model{F}, source, it) where F <: Field2D
+    (; field) = model
+    (; Hy, Ex, Ez) = field
+    (; fname, box) = source
+    ix1, ix2, iz1, iz2 = box
+    HDF5.h5open(fname, "r+") do fp
+        fp["incHy_1z"][:,it] = collect(Hy[ix1-1,iz1:iz2-1])   # 1z: x=x1, z in [z1,z2]
+        fp["incEz_1z"][:,it] = collect(Ez[ix1,iz1:iz2-1])
+        fp["incHy_2z"][:,it] = collect(Hy[ix2,iz1:iz2-1])   # 2z: x=x2, z in [z1,z2]
+        fp["incEz_2z"][:,it] = collect(Ez[ix2,iz1:iz2-1])
+        fp["incHy_x1"][:,it] = collect(Hy[ix1:ix2-1,iz1-1])   # x1: x in [x1,x2], z=z1
+        fp["incEx_x1"][:,it] = collect(Ex[ix1:ix2-1,iz1])
+        fp["incHy_x2"][:,it] = collect(Hy[ix1:ix2-1,iz2])   # x2: x in [x1,x2], z=z2
+        fp["incEx_x2"][:,it] = collect(Ex[ix1:ix2-1,iz2])
+    end
+    return nothing
+end
+
+
 # ------------------------------------------------------------------------------------------
 # TFSF 3D
 # ------------------------------------------------------------------------------------------
-struct TFSFSource3D{A} <: Source
+struct TFSFSource3D{A} <: SourceStruct
     ix1 :: Int
     ix2 :: Int
     iy1 :: Int
@@ -441,13 +528,13 @@ end
 @adapt_structure TFSFSource3D
 
 
-function source_init(source_data::TFSFSourceData, field::Field3D, t)
-    (; fname) = source_data
+function SourceStruct(source::TFSFSource, field::Field3D, t)
+    (; fname) = source
     (; grid) = field
     (; x, y, z) = grid
 
     fp = HDF5.h5open(fname, "r")
-    tfsf_box = HDF5.read(fp, "tfsf_box")
+    box = HDF5.read(fp, "box")
     xex = HDF5.read(fp, "x")
     yex = HDF5.read(fp, "y")
     zex = HDF5.read(fp, "z")
@@ -478,7 +565,7 @@ function source_init(source_data::TFSFSourceData, field::Field3D, t)
     incEy_xy2_ex = HDF5.read(fp, "incEy_xy2")
     HDF5.close(fp)
 
-    x1, x2, y1, y2, z1, z2 = tfsf_box
+    x1, x2, y1, y2, z1, z2 = box
     ix1 = argmin(abs.(x .- x1))
     ix2 = argmin(abs.(x .- x2))
     iy1 = argmin(abs.(y .- y1))
@@ -628,115 +715,12 @@ function add_source!(model, source::TFSFSource3D, it)
 end
 
 
-# ******************************************************************************************
-# TFSF record
-# ******************************************************************************************
-# ------------------------------------------------------------------------------------------
-# TFSF record 1D
-# ------------------------------------------------------------------------------------------
-function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: Field1D
-    (; field, Nt, t) = model
-    (; grid, Hy) = field
-    (; Nz, z) = grid
-
-    z1, z2 = tfsf_box
-    iz1 = argmin(abs.(z .- z1))
-    iz2 = argmin(abs.(z .- z2))
-
-    T = eltype(Hy)
-    HDF5.h5open(tfsf_fname, "w") do fp
-        fp["t"] = collect(t)
-        fp["tfsf_box"] = collect(tfsf_box)
-        HDF5.create_dataset(fp, "incHy_1", T, Nt)   # 1: z=z1
-        HDF5.create_dataset(fp, "incEx_1", T, Nt)
-        HDF5.create_dataset(fp, "incHy_2", T, Nt)   # 2: z=z2
-        HDF5.create_dataset(fp, "incEx_2", T, Nt)
-    end
-
-    return TFSFSourceData(tfsf_fname, (iz1, iz2))
-end
-
-
-function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field1D
-    (; field) = model
-    (; Hy, Ex) = field
-    (; fname, tfsf_box) = tfsf_data
-    iz1, iz2 = tfsf_box
-    HDF5.h5open(fname, "r+") do fp
-        fp["incHy_1"][it] = collect(Hy[iz1-1])   # 1: z=z1
-        fp["incEx_1"][it] = collect(Ex[iz1])
-        fp["incHy_2"][it] = collect(Hy[iz2])   # 2: z=z2
-        fp["incEx_2"][it] = collect(Ex[iz2])
-    end
-    return nothing
-end
-
-
-# ------------------------------------------------------------------------------------------
-# TFSF record 2D
-# ------------------------------------------------------------------------------------------
-function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: Field2D
-    (; field, Nt, t) = model
-    (; grid, Hy) = field
-    (; x, z) = grid
-
-    x1, x2, z1, z2 = tfsf_box
-    ix1 = argmin(abs.(x .- x1))
-    ix2 = argmin(abs.(x .- x2))
-    iz1 = argmin(abs.(z .- z1))
-    iz2 = argmin(abs.(z .- z2))
-
-    Nxi = ix2 - ix1
-    Nzi = iz2 - iz1
-
-    T = eltype(Hy)
-    HDF5.h5open(tfsf_fname, "w") do fp
-        fp["x"] = collect(x[ix1:ix2-1])
-        fp["z"] = collect(z[iz1:iz2-1])
-        fp["t"] = collect(t)
-        fp["tfsf_box"] = collect(tfsf_box)
-        HDF5.create_dataset(fp, "incHy_1z", T, (Nzi, Nt))   # 1z: x=x1, z in [z1,z2]
-        HDF5.create_dataset(fp, "incEz_1z", T, (Nzi, Nt))
-        HDF5.create_dataset(fp, "incHy_2z", T, (Nzi, Nt))   # 2z: x=x2, z in [z1,z2]
-        HDF5.create_dataset(fp, "incEz_2z", T, (Nzi, Nt))
-        HDF5.create_dataset(fp, "incHy_x1", T, (Nxi, Nt))   # x1: x in [x1,x2], z=z1
-        HDF5.create_dataset(fp, "incEx_x1", T, (Nxi, Nt))
-        HDF5.create_dataset(fp, "incHy_x2", T, (Nxi, Nt))   # x2: x in [x1,x2], z=z2
-        HDF5.create_dataset(fp, "incEx_x2", T, (Nxi, Nt))
-    end
-
-    return TFSFSourceData(tfsf_fname, (ix1, ix2, iz1, iz2))
-end
-
-
-function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field2D
-    (; field) = model
-    (; Hy, Ex, Ez) = field
-    (; fname, tfsf_box) = tfsf_data
-    ix1, ix2, iz1, iz2 = tfsf_box
-    HDF5.h5open(fname, "r+") do fp
-        fp["incHy_1z"][:,it] = collect(Hy[ix1-1,iz1:iz2-1])   # 1z: x=x1, z in [z1,z2]
-        fp["incEz_1z"][:,it] = collect(Ez[ix1,iz1:iz2-1])
-        fp["incHy_2z"][:,it] = collect(Hy[ix2,iz1:iz2-1])   # 2z: x=x2, z in [z1,z2]
-        fp["incEz_2z"][:,it] = collect(Ez[ix2,iz1:iz2-1])
-        fp["incHy_x1"][:,it] = collect(Hy[ix1:ix2-1,iz1-1])   # x1: x in [x1,x2], z=z1
-        fp["incEx_x1"][:,it] = collect(Ex[ix1:ix2-1,iz1])
-        fp["incHy_x2"][:,it] = collect(Hy[ix1:ix2-1,iz2])   # x2: x in [x1,x2], z=z2
-        fp["incEx_x2"][:,it] = collect(Ex[ix1:ix2-1,iz2])
-    end
-    return nothing
-end
-
-
-# ------------------------------------------------------------------------------------------
-# TFSF record 3D
-# ------------------------------------------------------------------------------------------
-function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: Field3D
+function prepare_tfsf_record(model::Model{F}, fname, box) where F <: Field3D
     (; field, Nt, t) = model
     (; grid, Hy) = field
     (; x, y, z) = grid
 
-    x1, x2, y1, y2, z1, z2 = tfsf_box
+    x1, x2, y1, y2, z1, z2 = box
     ix1 = argmin(abs.(x .- x1))
     ix2 = argmin(abs.(x .- x2))
     iy1 = argmin(abs.(y .- y1))
@@ -749,12 +733,12 @@ function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: F
     Nzi = iz2 - iz1
 
     T = eltype(Hy)
-    HDF5.h5open(tfsf_fname, "w") do fp
+    HDF5.h5open(fname, "w") do fp
         fp["x"] = collect(x[ix1:ix2])
         fp["y"] = collect(y[iy1:iy2])
         fp["z"] = collect(z[iz1:iz2])
         fp["t"] = collect(t)
-        fp["tfsf_box"] = collect(tfsf_box)
+        fp["box"] = collect(box)
         # 1yz: x=x1, y in [y1,y2], z in [z1,z2]
         HDF5.create_dataset(fp, "incHy_1yz", T, (Nyi+1, Nzi, Nt))
         HDF5.create_dataset(fp, "incHz_1yz", T, (Nyi, Nzi+1, Nt))
@@ -787,16 +771,15 @@ function prepare_tfsf_record(model::Model{F}, tfsf_box, tfsf_fname) where F <: F
         HDF5.create_dataset(fp, "incEy_xy2", T, (Nxi+1, Nyi, Nt))
     end
 
-    return TFSFSourceData(tfsf_fname, (ix1, ix2, iy1, iy2, iz1, iz2))
+    return TFSFSource(fname, (ix1, ix2, iy1, iy2, iz1, iz2))
 end
 
 
-function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field3D
+function write_tfsf_record(model::Model{F}, source, it) where F <: Field3D
     (; field) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; fname, tfsf_box) = tfsf_data
-    ix1, ix2, iy1, iy2, iz1, iz2 = tfsf_box
-
+    (; fname, box) = source
+    ix1, ix2, iy1, iy2, iz1, iz2 = box
     HDF5.h5open(fname, "r+") do fp
         # 1yz: x=x1, y in [y1,y2], z in [z1,z2]
         fp["incHy_1yz"][:,:,it] = collect(Hy[ix1-1,iy1:iy2,iz1:iz2-1])
@@ -830,4 +813,25 @@ function write_tfsf_record(model::Model{F}, tfsf_data, it) where F <: Field3D
         fp["incEy_xy2"][:,:,it] = collect(Ey[ix1:ix2,iy1:iy2-1,iz2])
     end
     return nothing
+end
+
+
+# ******************************************************************************************
+# Util
+# ******************************************************************************************
+function geometry2indices(geometry, grid::Grid1D)
+    (; Nz, z) = grid
+    return findall([geometry(z[iz]) for iz=1:Nz])
+end
+
+
+function geometry2indices(geometry, grid::Grid2D)
+    (; Nx, Nz, x, z) = grid
+    return findall([geometry(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz])
+end
+
+
+function geometry2indices(geometry, grid::Grid3D)
+    (; Nx, Ny, Nz, x, y, z) = grid
+    return findall([geometry(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz])
 end

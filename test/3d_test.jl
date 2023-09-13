@@ -4,34 +4,28 @@ grid = Grid3D(
     zmin=-5e-6, zmax=55e-6, Nz=801,
 )
 
-lam0 = 2e-6   # (m) wavelength
-tau0 = 20e-15   # (s) pulse duration
-dt0 = 3*tau0   # (s) delay time for source injection
-a0 = 10e-6   # (m) beam radius
-w0 = 2*pi * C0 / lam0   # frequency
-
-function waveform(t, p)
-    w0, tau0, dt0 = p
-    return exp(-(t - dt0)^2 / tau0^2) * cos(w0 * (t - dt0))
+function waveform(x, y, z, t)
+    lam0 = 2e-6   # (m) wavelength
+    tau0 = 20e-15   # (s) pulse duration
+    dt0 = 3*tau0   # (s) delay time for source injection
+    a0 = 10e-6   # (m) beam radius
+    w0 = 2*pi * C0 / lam0   # frequency
+    return exp(-0.5 * (sqrt(x^2 + y^2) / a0)^2) *
+           exp(-(t - dt0)^2 / tau0^2) * cos(w0 * (t - dt0))
 end
-
-amplitude(x,y,z) = exp(-0.5 * (sqrt(x^2 + y^2) / a0)^2)
 
 source = HardSource(
     geometry = (x,y,z) -> abs(z) < grid.dz/2,
-    amplitude = amplitude,
     waveform = waveform,
-    p = (w0,tau0,dt0),
     component = :Ex,
 )
 
 model = Model(grid, source; tmax=150e-15, pml_box=(4e-6,4e-6,4e-6,4e-6,4e-6,4e-6))
 
-Eth = zeros(grid.Nx, grid.Ny, grid.Nz)
-for iz=1:grid.Nz, iy=1:grid.Ny, ix=1:grid.Nx
-    A = amplitude(grid.x[ix], grid.y[iy], grid.z[iz])
-    T = waveform(model.t[end] - grid.z[iz]/C0, (w0,tau0,dt0))
-    Eth[ix,iy,iz] = A * T
+(; Nx, Ny, Nz, x, y, z) = grid
+Eth = zeros(Nx, Ny, Nz)
+for iz=1:Nz, iy=1:Ny, ix=1:Nx
+    Eth[ix,iy,iz] = waveform(x[ix], y[iy], z[iz], model.t[end] - z[iz]/C0)
 end
 
 

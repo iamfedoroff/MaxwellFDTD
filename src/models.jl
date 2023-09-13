@@ -17,7 +17,7 @@ end
 @adapt_structure Model
 
 
-function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=nothing)
+function Model(grid, source; tmax, CN=0.5, material=nothing, pml_box=nothing)
     field = Field(grid)
 
     # Time grid:
@@ -25,10 +25,10 @@ function Model(grid, source_data; tmax, CN=0.5, material=nothing, pml_box=nothin
     t = range(start=0, step=dt, stop=tmax)
     Nt = length(t)
 
-    if source_data isa SourceData
-        source_data = (source_data,)
+    if source isa Source
+        source = (source,)
     end
-    sources = Tuple([source_init(sd, field, t) for sd in source_data])
+    sources = Tuple([SourceStruct(s, field, t) for s in source])
 
     pml = PML(grid, pml_box, dt)
 
@@ -65,7 +65,7 @@ end
 
 function solve!(
     model; arch=CPU(), fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
-    tfsf_record=false, tfsf_box=nothing, tfsf_fname=nothing, viewpoints=nothing,
+    tfsf_record=false, tfsf_fname=nothing, tfsf_box=nothing, viewpoints=nothing,
 )
     model = adapt(arch, model)
     (; Nt, dt, t) = model
@@ -78,7 +78,7 @@ function solve!(
         if !isdir(dirname(tfsf_fname))
             mkpath(dirname(tfsf_fname))
         end
-        tfsf_data = prepare_tfsf_record(model, tfsf_box, tfsf_fname)
+        tfsf_data = prepare_tfsf_record(model, tfsf_fname, tfsf_box)
     end
 
     @showprogress 1 for it=1:Nt
