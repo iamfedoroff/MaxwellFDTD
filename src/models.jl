@@ -177,7 +177,7 @@ end
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; geometry, dispersion, plasma, kerr) = material
+    (; geometry, isdispersion, iskerr, isplasma) = material
 
     iz = @index(Global)
 
@@ -219,7 +219,7 @@ end
         sumPx = zero(eltype(Ex))
 
         # linear polarization:
-        if dispersion && isgeometry
+        if isdispersion && isgeometry
             (; Aq, Bq, Cq, Px, oldPx1, oldPx2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -231,7 +231,7 @@ end
         end
 
         # plasma:
-        if plasma && isgeometry
+        if isplasma && isgeometry
             (; ionrate, Rava, rho0, rho, drho,
                Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
 
@@ -269,7 +269,7 @@ end
         # update E .........................................................................
         DmPx = Dx[iz] - sumPx
 
-        if kerr && isgeometry
+        if iskerr && isgeometry
             (; Mk2, Mk3) = material   # Mk2=EPS0*chi2, Mk3=EPS0*chi3
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
@@ -368,7 +368,7 @@ end
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; geometry, dispersion, plasma, kerr) = material
+    (; geometry, isdispersion, iskerr, isplasma) = material
 
     ix, iz = @index(Global, NTuple)
 
@@ -428,7 +428,7 @@ end
         sumPz = zero(eltype(Ez))
 
         # linear polarization:
-        if dispersion && isgeometry
+        if isdispersion && isgeometry
             (; Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2) = material
             Nq = size(Px, 1)
             for iq=1:Nq
@@ -448,7 +448,7 @@ end
         end
 
         # plasma:
-        if plasma && isgeometry
+        if isplasma && isgeometry
             (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
 
@@ -497,7 +497,7 @@ end
         DmPx = Dx[ix,iz] - sumPx
         DmPz = Dz[ix,iz] - sumPz
 
-        if kerr && isgeometry
+        if iskerr && isgeometry
             (; Mk2, Mk3) = material   # Mk2=EPS0*chi2, Mk3=EPS0*chi3
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
@@ -651,7 +651,7 @@ end
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
-    (; geometry, dispersion, plasma, kerr) = material
+    (; geometry, isdispersion, iskerr, isplasma) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
@@ -750,7 +750,7 @@ end
         sumPz = zero(eltype(Ez))
 
         # linear polarization:
-        if dispersion && isgeometry
+        if isdispersion && isgeometry
             (; Aq, Bq, Cq,
                Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz, oldPz1, oldPz2) = material
             Nq = size(Px, 1)
@@ -777,7 +777,7 @@ end
         end
 
         # plasma:
-        if plasma && isgeometry
+        if isplasma && isgeometry
             (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
                Ma, Pax, Pay, Paz) = material
@@ -836,7 +836,7 @@ end
         DmPy = Dy[ix,iy,iz] - sumPy
         DmPz = Dz[ix,iy,iz] - sumPz
 
-        if kerr && isgeometry
+        if iskerr && isgeometry
             (; Mk2, Mk3) = material   # Mk2=EPS0*chi2, Mk3=EPS0*chi3
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]

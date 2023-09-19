@@ -15,11 +15,11 @@ end
 
 function write_output_variables(out, model)
     (; material) = model
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     (; fname, Sa) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Sa"] = collect(Sa)   # averaged poynting vector
-        if plasma
+        if isplasma
             fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
         end
     end
@@ -36,7 +36,7 @@ function Output(
 ) where F <: Field1D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; plasma) = material
+    (; isplasma) = material
     (; Nz, z) = grid
 
     if !isdir(dirname(fname))
@@ -78,7 +78,7 @@ function Output(
             group["t"] = collect(tout)
             HDF5.create_dataset(group, "Hy", T, (Nz, Ntout))
             HDF5.create_dataset(group, "Ex", T, (Nz, Ntout))
-            if plasma
+            if isplasma
                 HDF5.create_dataset(group, "rho", T, (Nz, Ntout))
             end
         end
@@ -89,7 +89,7 @@ function Output(
                 group["point"] = collect(promote(viewpoints[n]...))
                 HDF5.create_dataset(group, "Hy", T, (Nt,))
                 HDF5.create_dataset(group, "Ex", T, (Nt,))
-                if plasma
+                if isplasma
                     HDF5.create_dataset(group, "rho", T, (Nt,))
                 end
             end
@@ -106,13 +106,13 @@ function write_fields(out, model::Model{F}) where F <: Field1D
     (; fname, isfields, itout) = out
     (; field, material) = model
     (; Hy, Ex) = field
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
             group["Hy"][:,itout] = collect(Hy)
             group["Ex"][:,itout] = collect(Ex)
-            if plasma
+            if isplasma
                 group["rho"][:,itout] = collect(rho) * rho0
             end
         end
@@ -125,14 +125,14 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field1D
     (; fname, isviewpoints, ipts) = out
     (; field, material) = model
     (; Hy, Ex) = field
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
                 group = fp["viewpoints/$n"]
                 group["Hy"][it] = collect(Hy[ipt])
                 group["Ex"][it] = collect(Ex[ipt])
-                if plasma
+                if isplasma
                     group["rho"][it] = collect(rho[ipt]) * rho0
                 end
             end
@@ -160,7 +160,7 @@ function Output(
 ) where F <: Field2D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; plasma) = material
+    (; isplasma) = material
     (; Nx, Nz, x, z) = grid
 
     if !isdir(dirname(fname))
@@ -205,7 +205,7 @@ function Output(
             HDF5.create_dataset(group, "Hy", T, (Nx, Nz, Ntout))
             HDF5.create_dataset(group, "Ex", T, (Nx, Nz, Ntout))
             HDF5.create_dataset(group, "Ez", T, (Nx, Nz, Ntout))
-            if plasma
+            if isplasma
                 HDF5.create_dataset(group, "rho", T, (Nx, Nz, Ntout))
             end
         end
@@ -217,7 +217,7 @@ function Output(
                 HDF5.create_dataset(group, "Hy", T, (Nt,))
                 HDF5.create_dataset(group, "Ex", T, (Nt,))
                 HDF5.create_dataset(group, "Ez", T, (Nt,))
-                if plasma
+                if isplasma
                     HDF5.create_dataset(group, "rho", T, (Nt,))
                 end
             end
@@ -234,14 +234,14 @@ function write_fields(out, model::Model{F}) where F <: Field2D
     (; fname, isfields, itout) = out
     (; field, material) = model
     (; Hy, Ex, Ez) = field
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
             group["Hy"][:,:,itout] = collect(Hy)
             group["Ex"][:,:,itout] = collect(Ex)
             group["Ez"][:,:,itout] = collect(Ez)
-            if plasma
+            if isplasma
                 group["rho"][:,:,itout] = collect(rho) * rho0
             end
         end
@@ -254,7 +254,7 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field2D
     (; fname, isviewpoints, ipts) = out
     (; field, material) = model
     (; Hy, Ex, Ez) = field
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
@@ -262,7 +262,7 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field2D
                 group["Hy"][it] = collect(Hy[ipt])
                 group["Ex"][it] = collect(Ex[ipt])
                 group["Ez"][it] = collect(Ez[ipt])
-                if plasma
+                if isplasma
                     group["rho"][it] = collect(rho[ipt]) * rho0
                 end
             end
@@ -290,7 +290,7 @@ function Output(
 ) where F <: Field3D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; plasma) = material
+    (; isplasma) = material
     (; Nx, Ny, Nz, x, y, z) = grid
 
     if !isdir(dirname(fname))
@@ -340,7 +340,7 @@ function Output(
             HDF5.create_dataset(group, "Ex", T, (Nx, Ny, Nz, Ntout))
             HDF5.create_dataset(group, "Ey", T, (Nx, Ny, Nz, Ntout))
             HDF5.create_dataset(group, "Ez", T, (Nx, Ny, Nz, Ntout))
-            if plasma
+            if isplasma
                 HDF5.create_dataset(group, "rho", T, (Nx, Ny, Nz, Ntout))
             end
         end
@@ -355,7 +355,7 @@ function Output(
                 HDF5.create_dataset(group, "Ex", T, (Nt,))
                 HDF5.create_dataset(group, "Ey", T, (Nt,))
                 HDF5.create_dataset(group, "Ez", T, (Nt,))
-                if plasma
+                if isplasma
                     HDF5.create_dataset(group, "rho", T, (Nt,))
                 end
             end
@@ -372,7 +372,7 @@ function write_fields(out, model::Model{F}) where F <: Field3D
     (; fname, isfields, itout) = out
     (; field, material) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
@@ -382,7 +382,7 @@ function write_fields(out, model::Model{F}) where F <: Field3D
             group["Ex"][:,:,:,itout] = collect(Ex)
             group["Ey"][:,:,:,itout] = collect(Ey)
             group["Ez"][:,:,:,itout] = collect(Ez)
-            if plasma
+            if isplasma
                 group["rho"][:,:,:,itout] = collect(rho) * rho0
             end
         end
@@ -395,7 +395,7 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
     (; fname, isviewpoints, ipts) = out
     (; field, material) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; plasma, rho, rho0) = material
+    (; isplasma, rho, rho0) = material
     if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
@@ -406,7 +406,7 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
                 group["Ex"][it] = collect(Ex[ipt])
                 group["Ey"][it] = collect(Ey[ipt])
                 group["Ez"][it] = collect(Ez[ipt])
-                if plasma
+                if isplasma
                     group["rho"][it] = collect(rho[ipt]) * rho0
                 end
             end

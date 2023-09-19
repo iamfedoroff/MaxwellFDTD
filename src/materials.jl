@@ -54,7 +54,7 @@ struct MaterialStruct1D{G, T, V, A, B, F}
     Md1 :: T
     Md2 :: T
     # Linear dispersion:
-    dispersion :: Bool
+    isdispersion :: Bool
     Aq :: V
     Bq :: V
     Cq :: V
@@ -62,11 +62,11 @@ struct MaterialStruct1D{G, T, V, A, B, F}
     oldPx1 :: A
     oldPx2 :: A
     # Kerr:
-    kerr :: Bool
+    iskerr :: Bool
     Mk2 :: T
     Mk3 :: T
     # Plasma:
-    plasma :: Bool
+    isplasma :: Bool
     ionrate :: F
     Rava :: T
     rho0 :: T
@@ -108,14 +108,14 @@ function MaterialStruct(material, grid::Grid1D, dt)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
-        dispersion = false
+        isdispersion = false
 
         # to avoid issues with CUDA kernels, the variables should have the same type for all
         # logical branches:
         Aq, Bq, Cq = (zeros(1) for i=1:3)
         Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
     else
-        dispersion = true
+        isdispersion = true
 
         if chi isa Susceptibility
             chi = (chi,)
@@ -131,23 +131,23 @@ function MaterialStruct(material, grid::Grid1D, dt)
 
     # Kerr:
     if isnothing(chi2) && isnothing(chi3)
-        kerr = false
+        iskerr = false
         Mk2, Mk3 = 0.0, 0.0
     else
-        kerr = true
+        iskerr = true
         isnothing(chi2) ? Mk2 = 0.0 : Mk2 = EPS0*chi2
         isnothing(chi3) ? Mk3 = 0.0 : Mk3 = EPS0*chi3
     end
 
     # Plasma:
     if isnothing(plasma_data)
-        plasma = false
+        isplasma = false
         ionrate = identity
         Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:4)
     else
-        plasma = true
+        isplasma = true
         (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma_data
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
@@ -160,9 +160,9 @@ function MaterialStruct(material, grid::Grid1D, dt)
     end
 
     return MaterialStruct1D(
-        geometry, Mh, Me, Md1, Md2, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, kerr, Mk2,
-        Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma,
-        Pax,
+        geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, iskerr,
+        Mk2, Mk3, isplasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1,
+        oldPpx2, Ma, Pax,
     )
 end
 
@@ -176,7 +176,7 @@ struct MaterialStruct2D{G, T, V, A, B, F}
     Md1 :: T
     Md2 :: T
     # Linear dispersion:
-    dispersion :: Bool
+    isdispersion :: Bool
     Aq :: V
     Bq :: V
     Cq :: V
@@ -187,11 +187,11 @@ struct MaterialStruct2D{G, T, V, A, B, F}
     oldPz1 :: A
     oldPz2 :: A
     # Kerr:
-    kerr :: Bool
+    iskerr :: Bool
     Mk2 :: T
     Mk3 :: T
     # Plasma:
-    plasma :: Bool
+    isplasma :: Bool
     ionrate :: F
     Rava :: T
     rho0 :: T
@@ -237,7 +237,7 @@ function MaterialStruct(material, grid::Grid2D, dt)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
-        dispersion = false
+        isdispersion = false
 
         # to avoid issues with CUDA kernels, the types of variables should be the same
         # for all logical branches:
@@ -245,7 +245,7 @@ function MaterialStruct(material, grid::Grid2D, dt)
         Px, oldPx1, oldPx2 = (zeros(1) for i=1:3)
         Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
     else
-        dispersion = true
+        isdispersion = true
 
         if chi isa Susceptibility
             chi = (chi,)
@@ -262,23 +262,23 @@ function MaterialStruct(material, grid::Grid2D, dt)
 
     # Kerr:
     if isnothing(chi2) && isnothing(chi3)
-        kerr = false
+        iskerr = false
         Mk2, Mk3 = 0.0, 0.0
     else
-        kerr = true
+        iskerr = true
         isnothing(chi2) ? Mk2 = 0.0 : Mk2 = EPS0*chi2
         isnothing(chi3) ? Mk3 = 0.0 : Mk3 = EPS0*chi3
     end
 
     # Plasma:
     if isnothing(plasma_data)
-        plasma = false
+        isplasma = false
         ionrate = identity
         Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
-        plasma = true
+        isplasma = true
         (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma_data
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
@@ -292,9 +292,9 @@ function MaterialStruct(material, grid::Grid2D, dt)
     end
 
     return MaterialStruct2D(
-        geometry, Mh, Me, Md1, Md2, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1,
-        oldPz2, kerr, Mk2, Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx,
-        oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
+        geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz,
+        oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, rho0, rho, drho, Ap, Bp,
+        Cp, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
 end
 
@@ -308,7 +308,7 @@ struct MaterialStruct3D{G, T, V, A, B, F}
     Md1 :: T
     Md2 :: T
     # Linear dispersion:
-    dispersion :: Bool
+    isdispersion :: Bool
     Aq :: V
     Bq :: V
     Cq :: V
@@ -322,11 +322,11 @@ struct MaterialStruct3D{G, T, V, A, B, F}
     oldPz1 :: A
     oldPz2 :: A
     # Kerr:
-    kerr :: Bool
+    iskerr :: Bool
     Mk2 :: T
     Mk3 :: T
     # Plasma:
-    plasma :: Bool
+    isplasma :: Bool
     ionrate :: F
     Rava :: T
     rho0 :: T
@@ -376,7 +376,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
-        dispersion = false
+        isdispersion = false
 
         # to avoid issues with CUDA kernels, the variables should have the same type for all
         # logical branches:
@@ -385,7 +385,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
         Py, oldPy1, oldPy2 = (zeros(1) for i=1:3)
         Pz, oldPz1, oldPz2 = (zeros(1) for i=1:3)
     else
-        dispersion = true
+        isdispersion = true
 
         if chi isa Susceptibility
             chi = (chi,)
@@ -403,17 +403,17 @@ function MaterialStruct(material, grid::Grid3D, dt)
 
     # Kerr:
     if isnothing(chi2) && isnothing(chi3)
-        kerr = false
+        iskerr = false
         Mk2, Mk3 = 0.0, 0.0
     else
-        kerr = true
+        iskerr = true
         isnothing(chi2) ? Mk2 = 0.0 : Mk2 = EPS0*chi2
         isnothing(chi3) ? Mk3 = 0.0 : Mk3 = EPS0*chi3
     end
 
     # Plasma:
     if isnothing(plasma_data)
-        plasma = false
+        isplasma = false
         ionrate = identity
         Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
         rho, drho = (zeros(1) for i=1:2)
@@ -422,7 +422,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
         Ppz, oldPpz1, oldPpz2 = (zeros(1) for i=1:3)
         Pax, Pay, Paz = (zeros(1) for i=1:3)
     else
-        plasma = true
+        isplasma = true
         (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma_data
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
@@ -439,10 +439,10 @@ function MaterialStruct(material, grid::Grid3D, dt)
     end
 
     return MaterialStruct3D(
-        geometry, Mh, Me, Md1, Md2, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1,
-        oldPy2, Pz, oldPz1, oldPz2, kerr, Mk2, Mk3, plasma, ionrate, Rava, rho0, rho, drho,
-        Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2, Ma,
-        Pax, Pay, Paz,
+        geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py,
+        oldPy1, oldPy2, Pz, oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, rho0,
+        rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1,
+        oldPpz2, Ma, Pax, Pay, Paz,
     )
 end
 
