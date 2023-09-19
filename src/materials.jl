@@ -6,7 +6,7 @@ struct Material{G, T, C, C2, C3, P}
     chi :: C
     chi2 :: C2
     chi3 :: C3
-    plasma_data :: P
+    plasma :: P
 end
 
 
@@ -19,7 +19,7 @@ end
 
 
 # ******************************************************************************************
-struct PlasmaData{T, F}
+struct Plasma{T, F}
     ionrate :: F
     rho0 :: T
     nuc :: T
@@ -31,7 +31,7 @@ end
 
 function Plasma(; ionrate, rho0, nuc, frequency, Uiev, mr=1)
     rho0, nuc, frequency, Uiev, mr = promote(rho0, nuc, frequency, Uiev, mr)
-    return PlasmaData(ionrate, rho0, nuc, frequency, Uiev, mr)
+    return Plasma(ionrate, rho0, nuc, frequency, Uiev, mr)
 end
 
 
@@ -89,7 +89,7 @@ function MaterialStruct(material, grid::Grid1D, dt)
     if isnothing(material)
         material = Material(geometry = z -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma) = material
     (; Nz, z) = grid
 
     if typeof(geometry) <: Function
@@ -140,7 +140,7 @@ function MaterialStruct(material, grid::Grid1D, dt)
     end
 
     # Plasma:
-    if isnothing(plasma_data)
+    if isnothing(plasma)
         isplasma = false
         ionrate = identity
         Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
@@ -148,7 +148,7 @@ function MaterialStruct(material, grid::Grid1D, dt)
         Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:4)
     else
         isplasma = true
-        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma_data
+        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
@@ -218,7 +218,7 @@ function MaterialStruct(material, grid::Grid2D, dt)
     if isnothing(material)
         material = Material(geometry = (x,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma) = material
     (; Nx, Nz, x, z) = grid
 
     if typeof(geometry) <: Function
@@ -271,7 +271,7 @@ function MaterialStruct(material, grid::Grid2D, dt)
     end
 
     # Plasma:
-    if isnothing(plasma_data)
+    if isnothing(plasma)
         isplasma = false
         ionrate = identity
         Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
@@ -279,7 +279,7 @@ function MaterialStruct(material, grid::Grid2D, dt)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
         isplasma = true
-        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma_data
+        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
@@ -357,7 +357,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
     if isnothing(material)
         material = Material(geometry = (x,y,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma) = material
     (; Nx, Ny, Nz, x, y, z) = grid
 
     if typeof(geometry) <: Function
@@ -412,7 +412,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
     end
 
     # Plasma:
-    if isnothing(plasma_data)
+    if isnothing(plasma)
         isplasma = false
         ionrate = identity
         Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
@@ -423,7 +423,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
         Pax, Pay, Paz = (zeros(1) for i=1:3)
     else
         isplasma = true
-        (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma_data
+        (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
         Ui = Uiev * QE   # eV -> J
