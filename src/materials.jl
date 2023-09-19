@@ -1,4 +1,4 @@
-struct MaterialData{G, T, C, C2, C3, P}
+struct Material{G, T, C, C2, C3, P}
     geometry :: G
     eps :: T
     mu :: T
@@ -14,7 +14,7 @@ function Material(;
     geometry, eps=1, mu=1, sigma=0, chi=nothing, chi2=nothing, chi3=nothing, plasma=nothing,
 )
     eps, mu, sigma = promote(eps, mu, sigma)
-    return MaterialData(geometry, eps, mu, sigma, chi, chi2, chi3, plasma)
+    return Material(geometry, eps, mu, sigma, chi, chi2, chi3, plasma)
 end
 
 
@@ -46,8 +46,13 @@ end
 # ******************************************************************************************
 # Materials
 # ******************************************************************************************
-struct Material1D{G, V, A, B, F, T}
+struct MaterialStruct1D{G, T, V, A, B, F}
     geometry :: G
+    # Update coefficients for H, E and D fields:
+    Mh :: T
+    Me :: T
+    Md1 :: T
+    Md2 :: T
     # Linear dispersion:
     dispersion :: Bool
     Aq :: V
@@ -77,14 +82,14 @@ struct Material1D{G, V, A, B, F, T}
     Pax :: B
 end
 
-@adapt_structure Material1D
+@adapt_structure MaterialStruct1D
 
 
-function material_init(material_data, grid::Grid1D, dt)
-    if isnothing(material_data)
-        material_data = Material(geometry = z -> false)
+function MaterialStruct(material, grid::Grid1D, dt)
+    if isnothing(material)
+        material = Material(geometry = z -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material
     (; Nz, z) = grid
 
     if typeof(geometry) <: Function
@@ -93,11 +98,13 @@ function material_init(material_data, grid::Grid1D, dt)
         geometry = [Bool(geometry[iz]) for iz=1:Nz]
     end
 
-    # Permittivity, permeability, and conductivity:
-    eps = [geometry[iz] ? eps : 1 for iz=1:Nz]
-    mu = [geometry[iz] ? mu : 1 for iz=1:Nz]
-    sigma = [geometry[iz] ? sigma : 0 for iz=1:Nz]
-    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+    sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+
+    # Update coefficients for H, E and D fields:
+    Mh = dt / (MU0*mu)
+    Me = 1 / (EPS0*eps)
+    Md1 = (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = dt / (1 + sigma*dt/2)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
@@ -152,17 +159,22 @@ function material_init(material_data, grid::Grid1D, dt)
         rho, drho, Ppx, oldPpx1, oldPpx2, Pax = (zeros(Nz) for i=1:6)
     end
 
-    material = Material1D(
-        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, kerr, Mk2, Mk3, plasma,
-        ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax,
+    return MaterialStruct1D(
+        geometry, Mh, Me, Md1, Md2, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, kerr, Mk2,
+        Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma,
+        Pax,
     )
-    return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material2D{G, V, A, B, F, T}
+struct MaterialStruct2D{G, T, V, A, B, F}
     geometry :: G
+    # Update coefficients for H, E and D fields:
+    Mh :: T
+    Me :: T
+    Md1 :: T
+    Md2 :: T
     # Linear dispersion:
     dispersion :: Bool
     Aq :: V
@@ -199,14 +211,14 @@ struct Material2D{G, V, A, B, F, T}
     Paz :: B
 end
 
-@adapt_structure Material2D
+@adapt_structure MaterialStruct2D
 
 
-function material_init(material_data, grid::Grid2D, dt)
-    if isnothing(material_data)
-        material_data = Material(geometry = (x,z) -> false)
+function MaterialStruct(material, grid::Grid2D, dt)
+    if isnothing(material)
+        material = Material(geometry = (x,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material
     (; Nx, Nz, x, z) = grid
 
     if typeof(geometry) <: Function
@@ -215,11 +227,13 @@ function material_init(material_data, grid::Grid2D, dt)
         geometry = [Bool(geometry[ix,iz]) for ix=1:Nx, iz=1:Nz]
     end
 
-    # Permittivity, permeability, and conductivity:
-    eps = [geometry[ix,iz] ? eps : 1 for ix=1:Nx, iz=1:Nz]
-    mu = [geometry[ix,iz] ? mu : 1 for ix=1:Nx, iz=1:Nz]
-    sigma = [geometry[ix,iz] ? sigma : 0 for ix=1:Nx, iz=1:Nz]
-    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+    sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+
+    # Update coefficients for H, E and D fields:
+    Mh = dt / (MU0*mu)
+    Me = 1 / (EPS0*eps)
+    Md1 = (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = dt / (1 + sigma*dt/2)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
@@ -277,18 +291,22 @@ function material_init(material_data, grid::Grid2D, dt)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(Nx,Nz) for i=1:8)
     end
 
-    material = Material2D(
-        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1, oldPz2, kerr, Mk2,
-        Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz,
-        oldPpz1, oldPpz2, Ma, Pax, Paz,
+    return MaterialStruct2D(
+        geometry, Mh, Me, Md1, Md2, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1,
+        oldPz2, kerr, Mk2, Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx,
+        oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
-    return eps, mu, sigma, material
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct Material3D{G, V, A, B, F, T}
+struct MaterialStruct3D{G, T, V, A, B, F}
     geometry :: G
+    # Update coefficients for H, E and D fields:
+    Mh :: T
+    Me :: T
+    Md1 :: T
+    Md2 :: T
     # Linear dispersion:
     dispersion :: Bool
     Aq :: V
@@ -332,14 +350,14 @@ struct Material3D{G, V, A, B, F, T}
     Paz :: B
 end
 
-@adapt_structure Material3D
+@adapt_structure MaterialStruct3D
 
 
-function material_init(material_data, grid::Grid3D, dt)
-    if isnothing(material_data)
-        material_data = Material(geometry = (x,y,z) -> false)
+function MaterialStruct(material, grid::Grid3D, dt)
+    if isnothing(material)
+        material = Material(geometry = (x,y,z) -> false)
     end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material_data
+    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma_data) = material
     (; Nx, Ny, Nz, x, y, z) = grid
 
     if typeof(geometry) <: Function
@@ -348,11 +366,13 @@ function material_init(material_data, grid::Grid3D, dt)
         geometry = [Bool(geometry[ix,iy,iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     end
 
-    # Permittivity, permeability, and conductivity:
-    eps = [geometry[ix,iy,iz] ? eps : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    mu = [geometry[ix,iy,iz] ? mu : 1 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    sigma = [geometry[ix,iy,iz] ? sigma : 0 for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    @. sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+    sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+
+    # Update coefficients for H, E and D fields:
+    Mh = dt / (MU0*mu)
+    Me = 1 / (EPS0*eps)
+    Md1 = (1 - sigma*dt/2) / (1 + sigma*dt/2)
+    Md2 = dt / (1 + sigma*dt/2)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
@@ -418,13 +438,12 @@ function material_init(material_data, grid::Grid3D, dt)
         Pax, Pay, Paz = (zeros(Nx,Ny,Nz) for i=1:3)
     end
 
-    material = Material3D(
-        geometry, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1, oldPy2, Pz,
-        oldPz1, oldPz2, kerr, Mk2, Mk3, plasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
-        Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Pay,
-        Paz,
+    return MaterialStruct3D(
+        geometry, Mh, Me, Md1, Md2, dispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1,
+        oldPy2, Pz, oldPz1, oldPz2, kerr, Mk2, Mk3, plasma, ionrate, Rava, rho0, rho, drho,
+        Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2, Ma,
+        Pax, Pay, Paz,
     )
-    return eps, mu, sigma, material
 end
 
 

@@ -1,4 +1,4 @@
-struct Model{F, S, P, M, T, R, A}
+struct Model{F, S, P, M, T, R}
     field :: F
     sources :: S
     pml :: P
@@ -7,11 +7,11 @@ struct Model{F, S, P, M, T, R, A}
     Nt :: Int
     dt :: T
     t :: R
-    # Update coefficients for H, E and D fields:
-    Mh :: A
-    Me :: A
-    Md1 :: A
-    Md2 :: A
+    # Update coefficients for H, E and D fields in vacuum:
+    Mh :: T
+    Me :: T
+    Md1 :: T
+    Md2 :: T
 end
 
 @adapt_structure Model
@@ -32,7 +32,7 @@ function Model(grid, source; tmax, CN=0.5, material=nothing, pml_box=nothing)
 
     pml = PML(grid, pml_box, dt)
 
-    eps, mu, sigma, material = material_init(material, grid, dt)
+    material = MaterialStruct(material, grid, dt)
 
     # Compensation for the numerical dispersion:
     # dt = t[2] - t[1]
@@ -43,11 +43,11 @@ function Model(grid, source; tmax, CN=0.5, material=nothing, pml_box=nothing)
     # eps = @. sn * eps
     # mu = @. sn * mu
 
-    # Update coefficients for H, E and D fields:
-    Mh = @. dt / (MU0*mu)
-    Me = @. 1 / (EPS0*eps)
-    Md1 = @. (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = @. dt / (1 + sigma*dt/2)
+    # Update coefficients for H, E and D fields in vacuum:
+    Mh = dt / MU0
+    Me = 1 / EPS0
+    Md1 = 1.0
+    Md2 = dt
 
     return Model(field, sources, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
@@ -122,14 +122,23 @@ end
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field1D
-    (; field, pml, Mh) = model
-    (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
+    (; field, pml, material) = model
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
+    (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
+    (; geometry) = material
 
     iz = @index(Global)
 
     @inbounds begin
+        isgeometry = geometry[iz]
+
+        if isgeometry
+            (; Mh) = material   # Mh=dt/(MU0*mu)
+        else
+            (; Mh) = model   # Mh=dt/MU0
+        end
+
         # derivatives E ....................................................................
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
         dExz = (Ex[izp1] - Ex[iz]) / dz
@@ -139,19 +148,19 @@ end
             (; K, A, B) = zlayer1
             izpml = iz
             psiExz1[izpml] = B[izpml] * psiExz1[izpml] + A[izpml] * dExz
-            Hy[iz] -= Mh[iz] * psiExz1[izpml]
+            Hy[iz] -= Mh * psiExz1[izpml]
             dExz = dExz / K[izpml]
         end
         if iz >= zlayer2.ind   # z right layer [iz1:Nz]
             (; ind, K, A, B) = zlayer2
             izpml = iz - ind + 1
             psiExz2[izpml] = B[izpml] * psiExz2[izpml] + A[izpml] * dExz
-            Hy[iz] -= Mh[iz] * psiExz2[izpml]
+            Hy[iz] -= Mh * psiExz2[izpml]
             dExz = dExz / K[izpml]
         end
 
         # update H .........................................................................
-        Hy[iz] -= Mh[iz] * (0 + dExz)
+        Hy[iz] -= Mh * (0 + dExz)
     end
 end
 function update_H!(model::Model{F}) where F <: Field1D
@@ -164,7 +173,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
-    (; field, pml, material, dt, Me, Md1, Md2) = model
+    (; field, pml, material, dt) = model
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -173,6 +182,16 @@ end
     iz = @index(Global)
 
     @inbounds begin
+        isgeometry = geometry[iz]
+
+        if isgeometry
+            # Me=1/(EPS0*eps), Md1=(1-sigma*dt/2)/(1+sigma*dt/2), Md2=dt/(1+sigma*dt/2)
+            (; Me, Md1, Md2) = material
+        else
+            # Me=1/EPS0, Md1=1, Md2=dt
+            (; Me, Md1, Md2) = model
+        end
+
         # derivatives H ....................................................................
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
         dHyz = (Hy[iz] - Hy[izm1]) / dz
@@ -182,23 +201,21 @@ end
             (; K, A, B) = zlayer1
             izpml = iz
             psiHyz1[izpml] = B[izpml] * psiHyz1[izpml] + A[izpml] * dHyz
-            Dx[iz] -= Md2[iz] * psiHyz1[izpml]
+            Dx[iz] -= Md2 * psiHyz1[izpml]
             dHyz = dHyz / K[izpml]
         end
         if iz >= zlayer2.ind   # z right layer [iz1:Nz]
             (; ind, K, A, B) = zlayer2
             izpml = iz - ind + 1
             psiHyz2[izpml] = B[izpml] * psiHyz2[izpml] + A[izpml] * dHyz
-            Dx[iz] -= Md2[iz] * psiHyz2[izpml]
+            Dx[iz] -= Md2 * psiHyz2[izpml]
             dHyz = dHyz / K[izpml]
         end
 
         # update D .........................................................................
-        Dx[iz] = Md1[iz] * Dx[iz] + Md2[iz] * (0 - dHyz)
+        Dx[iz] = Md1 * Dx[iz] + Md2 * (0 - dHyz)
 
         # materials ........................................................................
-        isgeometry = geometry[iz]
-
         sumPx = zero(eltype(Ex))
 
         # linear polarization:
@@ -249,24 +266,22 @@ end
             drho[iz] = R1 * (1 - rho[iz])
         end
 
-        # update E (Me=1/(EPS0*eps), Mk2=EPS0*chi2, Mk3=EPS0*chi3) .........................
+        # update E .........................................................................
         DmPx = Dx[iz] - sumPx
 
         if kerr && isgeometry
-            (; Mk2, Mk3) = material
+            (; Mk2, Mk3) = material   # Mk2=EPS0*chi2, Mk3=EPS0*chi3
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[iz] =
-                (1 + 1*Mk2 * Me[iz]^2 * DmPx + 2*Mk3 * Me[iz]^3 * DmPx^2) /
-                (1 + 2*Mk2 * Me[iz]^2 * DmPx + 3*Mk3 * Me[iz]^3 * DmPx^2) *
-                DmPx * Me[iz]
+            Ex[iz] = (1 + 1*Mk2 * Me^2 * DmPx + 2*Mk3 * Me^3 * DmPx^2) /
+                     (1 + 2*Mk2 * Me^2 * DmPx + 3*Mk3 * Me^3 * DmPx^2) * DmPx * Me
         else
-            Ex[iz] = DmPx * Me[iz]
+            Ex[iz] = DmPx * Me
         end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[iz] += dt * Me[iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
+        # Ex[iz] += dt * Me * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[iz]))
     end
 end
 function update_E!(model::Model{F}) where F <: Field1D
@@ -282,14 +297,23 @@ end
 # 2D
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field2D
-    (; field, pml, Mh) = model
-    (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
+    (; field, pml, material) = model
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
+    (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
+    (; geometry) = material
 
     ix, iz = @index(Global, NTuple)
 
     @inbounds begin
+        isgeometry = geometry[ix,iz]
+
+        if isgeometry
+            (; Mh) = material   # Mh=dt/(MU0*mu)
+        else
+            (; Mh) = model   # Mh=dt/MU0
+        end
+
         # derivatives E ....................................................................
         ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
         iz == Nz ? izp1 = 1 : izp1 = iz + 1
@@ -301,33 +325,33 @@ end
             (; K, A, B) = xlayer1
             ixpml = ix
             psiEzx1[ixpml,iz] = B[ixpml] * psiEzx1[ixpml,iz] + A[ixpml] * dEzx
-            Hy[ix,iz] += Mh[ix,iz] * psiEzx1[ixpml,iz]
+            Hy[ix,iz] += Mh * psiEzx1[ixpml,iz]
             dEzx = dEzx / K[ixpml]
         end
         if ix >= xlayer2.ind      # x right layer [ix2:Nx]
             (; ind, K, A, B) = xlayer2
             ixpml = ix - ind + 1
             psiEzx2[ixpml,iz] = B[ixpml] * psiEzx2[ixpml,iz] + A[ixpml] * dEzx
-            Hy[ix,iz] += Mh[ix,iz] * psiEzx2[ixpml,iz]
+            Hy[ix,iz] += Mh * psiEzx2[ixpml,iz]
             dEzx = dEzx / K[ixpml]
         end
         if iz <= zlayer1.ind   # z left layer [1:iz1]
             (; K, A, B) = zlayer1
             izpml = iz
             psiExz1[ix,izpml] = B[izpml] * psiExz1[ix,izpml] + A[izpml] * dExz
-            Hy[ix,iz] -= Mh[ix,iz] * psiExz1[ix,izpml]
+            Hy[ix,iz] -= Mh * psiExz1[ix,izpml]
             dExz = dExz / K[izpml]
         end
         if iz >= zlayer2.ind      # z right layer [iz1:Nz]
             (; ind, K, A, B) = zlayer2
             izpml = iz - ind + 1
             psiExz2[ix,izpml] = B[izpml] * psiExz2[ix,izpml] + A[izpml] * dExz
-            Hy[ix,iz] -= Mh[ix,iz] * psiExz2[ix,izpml]
+            Hy[ix,iz] -= Mh * psiExz2[ix,izpml]
             dExz = dExz / K[izpml]
         end
 
         # update H .........................................................................
-        Hy[ix,iz] -= Mh[ix,iz] * (dExz - dEzx)
+        Hy[ix,iz] -= Mh * (dExz - dEzx)
     end
 end
 function update_H!(model::Model{F}) where F <: Field2D
@@ -340,7 +364,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
-    (; field, pml, material, dt, Me, Md1, Md2) = model
+    (; field, pml, material, dt) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -349,6 +373,16 @@ end
     ix, iz = @index(Global, NTuple)
 
     @inbounds begin
+        isgeometry = geometry[ix,iz]
+
+        if isgeometry
+            # Me=1/(EPS0*eps), Md1=(1-sigma*dt/2)/(1+sigma*dt/2), Md2=dt/(1+sigma*dt/2)
+            (; Me, Md1, Md2) = material
+        else
+            # Me=1/EPS0, Md1=1, Md2=dt
+            (; Me, Md1, Md2) = model
+        end
+
         # derivatives H ....................................................................
         ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
         iz == 1 ? izm1 = Nz : izm1 = iz - 1
@@ -360,38 +394,36 @@ end
             (; K, A, B) = xlayer1
             ixpml = ix
             psiHyx1[ixpml,iz] = B[ixpml] * psiHyx1[ixpml,iz] + A[ixpml] * dHyx
-            Dz[ix,iz] += Md2[ix,iz] * psiHyx1[ixpml,iz]
+            Dz[ix,iz] += Md2 * psiHyx1[ixpml,iz]
             dHyx = dHyx / K[ixpml]
         end
         if ix >= xlayer2.ind   # x right layer [ix2:Nx]
             (; ind, K, A, B) = xlayer2
             ixpml = ix - ind + 1
             psiHyx2[ixpml,iz] = B[ixpml] * psiHyx2[ixpml,iz] + A[ixpml] * dHyx
-            Dz[ix,iz] += Md2[ix,iz] * psiHyx2[ixpml,iz]
+            Dz[ix,iz] += Md2 * psiHyx2[ixpml,iz]
             dHyx = dHyx / K[ixpml]
         end
         if iz <= zlayer1.ind   # z left layer [1:iz1]
             (; K, A, B) = zlayer1
             izpml = iz
             psiHyz1[ix,izpml] = B[izpml] * psiHyz1[ix,izpml] + A[izpml] * dHyz
-            Dx[ix,iz] -= Md2[ix,iz] * psiHyz1[ix,izpml]
+            Dx[ix,iz] -= Md2 * psiHyz1[ix,izpml]
             dHyz = dHyz / K[izpml]
         end
         if iz >= zlayer2.ind   # z right layer [iz2:Nz]
             (; ind, K, A, B) = zlayer2
             izpml = iz - ind + 1
             psiHyz2[ix,izpml] = B[izpml] * psiHyz2[ix,izpml] + A[izpml] * dHyz
-            Dx[ix,iz] -= Md2[ix,iz] * psiHyz2[ix,izpml]
+            Dx[ix,iz] -= Md2 * psiHyz2[ix,izpml]
             dHyz = dHyz / K[izpml]
         end
 
         # update D .........................................................................
-        Dx[ix,iz] = Md1[ix,iz] * Dx[ix,iz] + Md2[ix,iz] * (0 - dHyz)
-        Dz[ix,iz] = Md1[ix,iz] * Dz[ix,iz] + Md2[ix,iz] * (dHyx - 0)
+        Dx[ix,iz] = Md1 * Dx[ix,iz] + Md2 * (0 - dHyz)
+        Dz[ix,iz] = Md1 * Dz[ix,iz] + Md2 * (dHyx - 0)
 
         # materials ........................................................................
-        isgeometry = geometry[ix,iz]
-
         sumPx = zero(eltype(Ex))
         sumPz = zero(eltype(Ez))
 
@@ -461,31 +493,27 @@ end
             drho[ix,iz] = R1 * (1 - rho[ix,iz])
         end
 
-        # update E (Me=1/(EPS0*eps), Mk2=EPS0*chi2, Mk3=EPS0*chi3) .........................
+        # update E .........................................................................
         DmPx = Dx[ix,iz] - sumPx
         DmPz = Dz[ix,iz] - sumPz
 
         if kerr && isgeometry
-            (; Mk2, Mk3) = material
+            (; Mk2, Mk3) = material   # Mk2=EPS0*chi2, Mk3=EPS0*chi3
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[ix,iz] =
-                (1 + 1*Mk2 * Me[ix,iz]^2 * DmPx + 2*Mk3 * Me[ix,iz]^3 * DmPx^2) /
-                (1 + 2*Mk2 * Me[ix,iz]^2 * DmPx + 3*Mk3 * Me[ix,iz]^3 * DmPx^2) *
-                DmPx * Me[ix,iz]
-            Ez[ix,iz] =
-                (1 + 1*Mk2 * Me[ix,iz]^2 * DmPz + 2*Mk3 * Me[ix,iz]^3 * DmPz^2) /
-                (1 + 2*Mk2 * Me[ix,iz]^2 * DmPz + 3*Mk3 * Me[ix,iz]^3 * DmPz^2) *
-                DmPz * Me[ix,iz]
+            Ex[ix,iz] = (1 + 1*Mk2 * Me^2 * DmPx + 2*Mk3 * Me^3 * DmPx^2) /
+                        (1 + 2*Mk2 * Me^2 * DmPx + 3*Mk3 * Me^3 * DmPx^2) * DmPx * Me
+            Ez[ix,iz] = (1 + 1*Mk2 * Me^2 * DmPz + 2*Mk3 * Me^3 * DmPz^2) /
+                        (1 + 2*Mk2 * Me^2 * DmPz + 3*Mk3 * Me^3 * DmPz^2) * DmPz * Me
         else
-            Ex[ix,iz] = DmPx * Me[ix,iz]
-            Ez[ix,iz] = DmPz * Me[ix,iz]
+            Ex[ix,iz] = DmPx * Me
+            Ez[ix,iz] = DmPz * Me
         end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[ix,iz] += dt * Me[ix,iz] * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
-        # Ez[ix,iz] += dt * Me[ix,iz] * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
+        # Ex[ix,iz] += dt * Me * ((0 - dHyz / Kz[iz]) + (0 - psiHyz[ix,iz]))
+        # Ez[ix,iz] += dt * Me * ((dHyx / Kx[ix] - 0) + (psiHyx[ix,iz] - 0))
     end
 end
 function update_E!(model::Model{F}) where F <: Field2D
@@ -503,16 +531,25 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_H_kernel!(field::Field3D, pml, Mh)
+@kernel function update_H_kernel!(field::Field3D, pml, material, Mh0)
+    (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
+    (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiEyx1, psiEzx1, xlayer2, psiEyx2, psiEzx2,
        ylayer1, psiExy1, psiEzy1, ylayer2, psiExy2, psiEzy2,
        zlayer1, psiExz1, psiEyz1, zlayer2, psiExz2, psiEyz2) = pml
-    (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; Nx, Ny, Nz, dx, dy, dz) = grid
+    (; geometry) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
     @inbounds begin
+        isgeometry = geometry[ix,iy,iz]
+
+        if isgeometry
+            (; Mh) = material   # Mh=dt/(MU0*mu)
+        else
+            Mh = Mh0   # Mh=dt/MU0
+        end
+
         # derivatives E ....................................................................
         ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
         iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
@@ -530,8 +567,8 @@ end
             ixpml = ix
             psiEyx1[ixpml,iy,iz] = B[ixpml] * psiEyx1[ixpml,iy,iz] + A[ixpml] * dEyx
             psiEzx1[ixpml,iy,iz] = B[ixpml] * psiEzx1[ixpml,iy,iz] + A[ixpml] * dEzx
-            Hy[ix,iy,iz] += Mh[ix,iy,iz] * psiEzx1[ixpml,iy,iz]
-            Hz[ix,iy,iz] -= Mh[ix,iy,iz] * psiEyx1[ixpml,iy,iz]
+            Hy[ix,iy,iz] += Mh * psiEzx1[ixpml,iy,iz]
+            Hz[ix,iy,iz] -= Mh * psiEyx1[ixpml,iy,iz]
             dEyx = dEyx / K[ixpml]
             dEzx = dEzx / K[ixpml]
         end
@@ -540,8 +577,8 @@ end
             ixpml = ix - ind + 1
             psiEyx2[ixpml,iy,iz] = B[ixpml] * psiEyx2[ixpml,iy,iz] + A[ixpml] * dEyx
             psiEzx2[ixpml,iy,iz] = B[ixpml] * psiEzx2[ixpml,iy,iz] + A[ixpml] * dEzx
-            Hy[ix,iy,iz] += Mh[ix,iy,iz] * psiEzx2[ixpml,iy,iz]
-            Hz[ix,iy,iz] -= Mh[ix,iy,iz] * psiEyx2[ixpml,iy,iz]
+            Hy[ix,iy,iz] += Mh * psiEzx2[ixpml,iy,iz]
+            Hz[ix,iy,iz] -= Mh * psiEyx2[ixpml,iy,iz]
             dEyx = dEyx / K[ixpml]
             dEzx = dEzx / K[ixpml]
         end
@@ -550,8 +587,8 @@ end
             iypml = iy
             psiExy1[ix,iypml,iz] = B[iypml] * psiExy1[ix,iypml,iz] + A[iypml] * dExy
             psiEzy1[ix,iypml,iz] = B[iypml] * psiEzy1[ix,iypml,iz] + A[iypml] * dEzy
-            Hx[ix,iy,iz] -= Mh[ix,iy,iz] * psiEzy1[ix,iypml,iz]
-            Hz[ix,iy,iz] += Mh[ix,iy,iz] * psiExy1[ix,iypml,iz]
+            Hx[ix,iy,iz] -= Mh * psiEzy1[ix,iypml,iz]
+            Hz[ix,iy,iz] += Mh * psiExy1[ix,iypml,iz]
             dExy = dExy / K[iypml]
             dEzy = dEzy / K[iypml]
         end
@@ -560,8 +597,8 @@ end
             iypml = iy - ind + 1
             psiExy2[ix,iypml,iz] = B[iypml] * psiExy2[ix,iypml,iz] + A[iypml] * dExy
             psiEzy2[ix,iypml,iz] = B[iypml] * psiEzy2[ix,iypml,iz] + A[iypml] * dEzy
-            Hx[ix,iy,iz] -= Mh[ix,iy,iz] * psiEzy2[ix,iypml,iz]
-            Hz[ix,iy,iz] += Mh[ix,iy,iz] * psiExy2[ix,iypml,iz]
+            Hx[ix,iy,iz] -= Mh * psiEzy2[ix,iypml,iz]
+            Hz[ix,iy,iz] += Mh * psiExy2[ix,iypml,iz]
             dExy = dExy / K[iypml]
             dEzy = dEzy / K[iypml]
         end
@@ -570,8 +607,8 @@ end
             izpml = iz
             psiExz1[ix,iy,izpml] = B[izpml] * psiExz1[ix,iy,izpml] + A[izpml] * dExz
             psiEyz1[ix,iy,izpml] = B[izpml] * psiEyz1[ix,iy,izpml] + A[izpml] * dEyz
-            Hx[ix,iy,iz] += Mh[ix,iy,iz] * psiEyz1[ix,iy,izpml]
-            Hy[ix,iy,iz] -= Mh[ix,iy,iz] * psiExz1[ix,iy,izpml]
+            Hx[ix,iy,iz] += Mh * psiEyz1[ix,iy,izpml]
+            Hy[ix,iy,iz] -= Mh * psiExz1[ix,iy,izpml]
             dExz = dExz / K[izpml]
             dEyz = dEyz / K[izpml]
         end
@@ -580,16 +617,16 @@ end
             izpml = iz - ind + 1
             psiExz2[ix,iy,izpml] = B[izpml] * psiExz2[ix,iy,izpml] + A[izpml] * dExz
             psiEyz2[ix,iy,izpml] = B[izpml] * psiEyz2[ix,iy,izpml] + A[izpml] * dEyz
-            Hx[ix,iy,iz] += Mh[ix,iy,iz] * psiEyz2[ix,iy,izpml]
-            Hy[ix,iy,iz] -= Mh[ix,iy,iz] * psiExz2[ix,iy,izpml]
+            Hx[ix,iy,iz] += Mh * psiEyz2[ix,iy,izpml]
+            Hy[ix,iy,iz] -= Mh * psiExz2[ix,iy,izpml]
             dExz = dExz / K[izpml]
             dEyz = dEyz / K[izpml]
         end
 
         # update H .........................................................................
-        Hx[ix,iy,iz] -= Mh[ix,iy,iz] * (dEzy - dEyz)
-        Hy[ix,iy,iz] -= Mh[ix,iy,iz] * (dExz - dEzx)
-        Hz[ix,iy,iz] -= Mh[ix,iy,iz] * (dEyx - dExy)
+        Hx[ix,iy,iz] -= Mh * (dEzy - dEyz)
+        Hy[ix,iy,iz] -= Mh * (dExz - dEzx)
+        Hz[ix,iy,iz] -= Mh * (dEyx - dExy)
     end
 end
 function update_H!(model::Model{F}) where F <: Field3D
@@ -599,8 +636,8 @@ function update_H!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, pml, Mh) = model
-    update_H_kernel!(backend)(field, pml, Mh; ndrange)
+    (; field, pml, material, Mh) = model
+    update_H_kernel!(backend)(field, pml, material, Mh; ndrange)
     return nothing
 end
 
@@ -608,7 +645,7 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_E_kernel!(field::Field3D, pml, material, dt, Me, Md1, Md2)
+@kernel function update_E_kernel!(field::Field3D, pml, material, dt, Me0, Md10, Md20)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
@@ -619,6 +656,16 @@ end
     ix, iy, iz = @index(Global, NTuple)
 
     @inbounds begin
+        isgeometry = geometry[ix,iy,iz]
+
+        if isgeometry
+            # Me=1/(EPS0*eps), Md1=(1-sigma*dt/2)/(1+sigma*dt/2), Md2=dt/(1+sigma*dt/2)
+            (; Me, Md1, Md2) = material
+        else
+            # Me=1/EPS0, Md1=1, Md2=dt
+            Me, Md1, Md2 = Me0, Md10, Md20
+        end
+
         # derivatives H ....................................................................
         ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
         iy == 1 ? iym1 = Ny : iym1 = iy - 1
@@ -636,8 +683,8 @@ end
             ixpml = ix
             psiHyx1[ixpml,iy,iz] = B[ixpml] * psiHyx1[ixpml,iy,iz] + A[ixpml] * dHyx
             psiHzx1[ixpml,iy,iz] = B[ixpml] * psiHzx1[ixpml,iy,iz] + A[ixpml] * dHzx
-            Dy[ix,iy,iz] -= Md2[ix,iy,iz] * psiHzx1[ixpml,iy,iz]
-            Dz[ix,iy,iz] += Md2[ix,iy,iz] * psiHyx1[ixpml,iy,iz]
+            Dy[ix,iy,iz] -= Md2 * psiHzx1[ixpml,iy,iz]
+            Dz[ix,iy,iz] += Md2 * psiHyx1[ixpml,iy,iz]
             dHyx = dHyx / K[ixpml]
             dHzx = dHzx / K[ixpml]
         end
@@ -646,8 +693,8 @@ end
             ixpml = ix - ind + 1
             psiHyx2[ixpml,iy,iz] = B[ixpml] * psiHyx2[ixpml,iy,iz] + A[ixpml] * dHyx
             psiHzx2[ixpml,iy,iz] = B[ixpml] * psiHzx2[ixpml,iy,iz] + A[ixpml] * dHzx
-            Dy[ix,iy,iz] -= Md2[ix,iy,iz] * psiHzx2[ixpml,iy,iz]
-            Dz[ix,iy,iz] += Md2[ix,iy,iz] * psiHyx2[ixpml,iy,iz]
+            Dy[ix,iy,iz] -= Md2 * psiHzx2[ixpml,iy,iz]
+            Dz[ix,iy,iz] += Md2 * psiHyx2[ixpml,iy,iz]
             dHyx = dHyx / K[ixpml]
             dHzx = dHzx / K[ixpml]
         end
@@ -656,8 +703,8 @@ end
             iypml = iy
             psiHxy1[ix,iypml,iz] = B[iypml] * psiHxy1[ix,iypml,iz] + A[iypml] * dHxy
             psiHzy1[ix,iypml,iz] = B[iypml] * psiHzy1[ix,iypml,iz] + A[iypml] * dHzy
-            Dx[ix,iy,iz] += Md2[ix,iy,iz] * psiHzy1[ix,iypml,iz]
-            Dz[ix,iy,iz] -= Md2[ix,iy,iz] * psiHxy1[ix,iypml,iz]
+            Dx[ix,iy,iz] += Md2 * psiHzy1[ix,iypml,iz]
+            Dz[ix,iy,iz] -= Md2 * psiHxy1[ix,iypml,iz]
             dHxy = dHxy / K[iypml]
             dHzy = dHzy / K[iypml]
         end
@@ -666,8 +713,8 @@ end
             iypml = iy - ind + 1
             psiHxy2[ix,iypml,iz] = B[iypml] * psiHxy2[ix,iypml,iz] + A[iypml] * dHxy
             psiHzy2[ix,iypml,iz] = B[iypml] * psiHzy2[ix,iypml,iz] + A[iypml] * dHzy
-            Dx[ix,iy,iz] += Md2[ix,iy,iz] * psiHzy2[ix,iypml,iz]
-            Dz[ix,iy,iz] -= Md2[ix,iy,iz] * psiHxy2[ix,iypml,iz]
+            Dx[ix,iy,iz] += Md2 * psiHzy2[ix,iypml,iz]
+            Dz[ix,iy,iz] -= Md2 * psiHxy2[ix,iypml,iz]
             dHxy = dHxy / K[iypml]
             dHzy = dHzy / K[iypml]
         end
@@ -676,8 +723,8 @@ end
             izpml = iz
             psiHxz1[ix,iy,izpml] = B[izpml] * psiHxz1[ix,iy,izpml] + A[izpml] * dHxz
             psiHyz1[ix,iy,izpml] = B[izpml] * psiHyz1[ix,iy,izpml] + A[izpml] * dHyz
-            Dx[ix,iy,iz] -= Md2[ix,iy,iz] * psiHyz1[ix,iy,izpml]
-            Dy[ix,iy,iz] += Md2[ix,iy,iz] * psiHxz1[ix,iy,izpml]
+            Dx[ix,iy,iz] -= Md2 * psiHyz1[ix,iy,izpml]
+            Dy[ix,iy,iz] += Md2 * psiHxz1[ix,iy,izpml]
             dHxz = dHxz / K[izpml]
             dHyz = dHyz / K[izpml]
         end
@@ -686,20 +733,18 @@ end
             izpml = iz - ind + 1
             psiHxz2[ix,iy,izpml] = B[izpml] * psiHxz2[ix,iy,izpml] + A[izpml] * dHxz
             psiHyz2[ix,iy,izpml] = B[izpml] * psiHyz2[ix,iy,izpml] + A[izpml] * dHyz
-            Dx[ix,iy,iz] -= Md2[ix,iy,iz] * psiHyz2[ix,iy,izpml]
-            Dy[ix,iy,iz] += Md2[ix,iy,iz] * psiHxz2[ix,iy,izpml]
+            Dx[ix,iy,iz] -= Md2 * psiHyz2[ix,iy,izpml]
+            Dy[ix,iy,iz] += Md2 * psiHxz2[ix,iy,izpml]
             dHxz = dHxz / K[izpml]
             dHyz = dHyz / K[izpml]
         end
 
         # update D .........................................................................
-        Dx[ix,iy,iz] = Md1[ix,iy,iz] * Dx[ix,iy,iz] + Md2[ix,iy,iz] * (dHzy - dHyz)
-        Dy[ix,iy,iz] = Md1[ix,iy,iz] * Dy[ix,iy,iz] + Md2[ix,iy,iz] * (dHxz - dHzx)
-        Dz[ix,iy,iz] = Md1[ix,iy,iz] * Dz[ix,iy,iz] + Md2[ix,iy,iz] * (dHyx - dHxy)
+        Dx[ix,iy,iz] = Md1 * Dx[ix,iy,iz] + Md2 * (dHzy - dHyz)
+        Dy[ix,iy,iz] = Md1 * Dy[ix,iy,iz] + Md2 * (dHxz - dHzx)
+        Dz[ix,iy,iz] = Md1 * Dz[ix,iy,iz] + Md2 * (dHyx - dHxy)
 
         # materials ........................................................................
-        isgeometry = geometry[ix,iy,iz]
-
         sumPx = zero(eltype(Ex))
         sumPy = zero(eltype(Ey))
         sumPz = zero(eltype(Ez))
@@ -713,18 +758,18 @@ end
                 oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
                 oldPx1[iq,ix,iy,iz] = Px[iq,ix,iy,iz]
                 Px[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Px[iq,ix,iy,iz] +
-                                Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
-                                Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
+                                  Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
+                                  Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
                 oldPy2[iq,ix,iy,iz] = oldPy1[iq,ix,iy,iz]
                 oldPy1[iq,ix,iy,iz] = Py[iq,ix,iy,iz]
                 Py[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Py[iq,ix,iy,iz] +
-                                Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
-                                Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
+                                  Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
+                                  Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
                 oldPz2[iq,ix,iy,iz] = oldPz1[iq,ix,iy,iz]
                 oldPz1[iq,ix,iy,iz] = Pz[iq,ix,iy,iz]
                 Pz[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Pz[iq,ix,iy,iz] +
-                                Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
-                                Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
+                                  Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
+                                  Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
                 sumPx += Px[iq,ix,iy,iz]
                 sumPy += Py[iq,ix,iy,iz]
                 sumPz += Pz[iq,ix,iy,iz]
@@ -786,38 +831,32 @@ end
             drho[ix,iy,iz] = R1 * (1 - rho[ix,iy,iz])
         end
 
-        # update E (Me=1/(EPS0*eps), Mk2=EPS0*chi2, Mk3=EPS0*chi3) .........................
+        # update E .........................................................................
         DmPx = Dx[ix,iy,iz] - sumPx
         DmPy = Dy[ix,iy,iz] - sumPy
         DmPz = Dz[ix,iy,iz] - sumPz
 
         if kerr && isgeometry
-            (; Mk2, Mk3) = material
+            (; Mk2, Mk3) = material   # Mk2=EPS0*chi2, Mk3=EPS0*chi3
 
             # Kerr by Meep [A.F. Oskooi, Comput. Phys. Commun., 181, 687 (2010)]
-            Ex[ix,iy,iz] =
-                (1 + 1*Mk2 * Me[ix,iy,iz]^2 * DmPx + 2*Mk3 * Me[ix,iy,iz]^3 * DmPx^2) /
-                (1 + 2*Mk2 * Me[ix,iy,iz]^2 * DmPx + 3*Mk3 * Me[ix,iy,iz]^3 * DmPx^2) *
-                DmPx * Me[ix,iy,iz]
-            Ey[ix,iy,iz] =
-                (1 + 1*Mk2 * Me[ix,iy,iz]^2 * DmPy + 2*Mk3 * Me[ix,iy,iz]^3 * DmPy^2) /
-                (1 + 2*Mk2 * Me[ix,iy,iz]^2 * DmPy + 3*Mk3 * Me[ix,iy,iz]^3 * DmPy^2) *
-                DmPy * Me[ix,iy,iz]
-            Ez[ix,iy,iz] =
-                (1 + 1*Mk2 * Me[ix,iy,iz]^2 * DmPz + 2*Mk3 * Me[ix,iy,iz]^3 * DmPz^2) /
-                (1 + 2*Mk2 * Me[ix,iy,iz]^2 * DmPz + 3*Mk3 * Me[ix,iy,iz]^3 * DmPz^2) *
-                DmPz * Me[ix,iy,iz]
+            Ex[ix,iy,iz] = (1 + 1*Mk2 * Me^2 * DmPx + 2*Mk3 * Me^3 * DmPx^2) /
+                           (1 + 2*Mk2 * Me^2 * DmPx + 3*Mk3 * Me^3 * DmPx^2) * DmPx * Me
+            Ey[ix,iy,iz] = (1 + 1*Mk2 * Me^2 * DmPy + 2*Mk3 * Me^3 * DmPy^2) /
+                           (1 + 2*Mk2 * Me^2 * DmPy + 3*Mk3 * Me^3 * DmPy^2) * DmPy * Me
+            Ez[ix,iy,iz] = (1 + 1*Mk2 * Me^2 * DmPz + 2*Mk3 * Me^3 * DmPz^2) /
+                           (1 + 2*Mk2 * Me^2 * DmPz + 3*Mk3 * Me^3 * DmPz^2) * DmPz * Me
         else
-            Ex[ix,iy,iz] = DmPx * Me[ix,iy,iz]
-            Ey[ix,iy,iz] = DmPy * Me[ix,iy,iz]
-            Ez[ix,iy,iz] = DmPz * Me[ix,iy,iz]
+            Ex[ix,iy,iz] = DmPx * Me
+            Ey[ix,iy,iz] = DmPy * Me
+            Ez[ix,iy,iz] = DmPz * Me
         end
 
         # update E explicit:
         # (; dt) = model
-        # Ex[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
-        # Ey[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
-        # Ez[ix,iy,iz] += dt * Me[ix,iy,iz] * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
+        # Ex[ix,iy,iz] += dt * Me * ((dHzy - dHyz) + (psiHzy[ix,iy,iz] - psiHyz[ix,iy,iz]))
+        # Ey[ix,iy,iz] += dt * Me * ((dHxz - dHzx) + (psiHxz[ix,iy,iz] - psiHzx[ix,iy,iz]))
+        # Ez[ix,iy,iz] += dt * Me * ((dHyx - dHxy) + (psiHyx[ix,iy,iz] - psiHxy[ix,iy,iz]))
     end
 end
 function update_E!(model::Model{F}) where F <: Field3D
