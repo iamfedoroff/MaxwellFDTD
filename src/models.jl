@@ -73,8 +73,10 @@ function solve!(
     out = Output(model; fname, nstride, nframes, dtout, viewpoints)
 
     if tfsf_record
-        ext = splitext(out.fname)[end]
-        tfsf_fname = replace(out.fname, ext => "_tfsf" * ext)
+        if isnothing(tfsf_fname)
+            ext = splitext(out.fname)[end]
+            tfsf_fname = replace(out.fname, ext => "_tfsf" * ext)
+        end
         if !isdir(dirname(tfsf_fname))
             mkpath(dirname(tfsf_fname))
         end
