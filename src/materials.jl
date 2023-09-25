@@ -69,6 +69,7 @@ struct MaterialStruct1D{G, T, V, A, B, F}
     isplasma :: Bool
     ionrate :: F
     Rava :: T
+    ksi :: T   # field to intensity conversion coefficient
     rho0 :: T
     rho :: B   # electron density
     drho :: B   # time derivative of electron density
@@ -143,11 +144,16 @@ function MaterialStruct(material, grid::Grid1D, dt)
     if isnothing(plasma)
         isplasma = false
         ionrate = identity
-        Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
+        Rava, ksi, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:7)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:4)
     else
         isplasma = true
+
+        # Field to intensity conversion coefficient (I = ksi*|E|^2)
+        n = sqrt(eps * mu)   # refractive index
+        ksi = n * EPS0 * C0 / 2   # 1/2 from <cos^2(t)>
+
         (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
@@ -161,7 +167,7 @@ function MaterialStruct(material, grid::Grid1D, dt)
 
     return MaterialStruct1D(
         geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, iskerr,
-        Mk2, Mk3, isplasma, ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1,
+        Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1,
         oldPpx2, Ma, Pax,
     )
 end
@@ -194,6 +200,7 @@ struct MaterialStruct2D{G, T, V, A, B, F}
     isplasma :: Bool
     ionrate :: F
     Rava :: T
+    ksi :: T   # field to intensity conversion coefficient
     rho0 :: T
     rho :: B   # electron density
     drho :: B   # time derivative of electron density
@@ -274,11 +281,16 @@ function MaterialStruct(material, grid::Grid2D, dt)
     if isnothing(plasma)
         isplasma = false
         ionrate = identity
-        Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
+        Rava, ksi, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:7)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
         isplasma = true
+
+        # Field to intensity conversion coefficient (I = ksi*|E|^2)
+        n = sqrt(eps * mu)   # refractive index
+        ksi = n * EPS0 * C0 / 2   # 1/2 from <cos^2(t)>
+
         (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
@@ -293,8 +305,8 @@ function MaterialStruct(material, grid::Grid2D, dt)
 
     return MaterialStruct2D(
         geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz,
-        oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, rho0, rho, drho, Ap, Bp,
-        Cp, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
+        oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap,
+        Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
 end
 
@@ -329,6 +341,7 @@ struct MaterialStruct3D{G, T, V, A, B, F}
     isplasma :: Bool
     ionrate :: F
     Rava :: T
+    ksi :: T   # field to intensity conversion coefficient
     rho0 :: T
     rho :: B   # electron density
     drho :: B   # time derivative of electron density
@@ -415,7 +428,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
     if isnothing(plasma)
         isplasma = false
         ionrate = identity
-        Rava, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:6)
+        Rava, ksi, rho0, Ap, Bp, Cp, Ma = (0.0 for i=1:7)
         rho, drho = (zeros(1) for i=1:2)
         Ppx, oldPpx1, oldPpx2 = (zeros(1) for i=1:3)
         Ppy, oldPpy1, oldPpy2 = (zeros(1) for i=1:3)
@@ -423,6 +436,11 @@ function MaterialStruct(material, grid::Grid3D, dt)
         Pax, Pay, Paz = (zeros(1) for i=1:3)
     else
         isplasma = true
+
+        # Field to intensity conversion coefficient (I = ksi*|E|^2)
+        n = sqrt(eps * mu)   # refractive index
+        ksi = n * EPS0 * C0 / 2   # 1/2 from <cos^2(t)>
+
         (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
@@ -440,9 +458,9 @@ function MaterialStruct(material, grid::Grid3D, dt)
 
     return MaterialStruct3D(
         geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py,
-        oldPy1, oldPy2, Pz, oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, rho0,
-        rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1,
-        oldPpz2, Ma, Pax, Pay, Paz,
+        oldPy1, oldPy2, Pz, oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi,
+        rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz,
+        oldPpz1, oldPpz2, Ma, Pax, Pay, Paz,
     )
 end
 

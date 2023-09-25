@@ -234,10 +234,9 @@ end
 
         # plasma:
         if isplasma && isgeometry
-            (; ionrate, Rava, rho0, rho, drho,
+            (; ionrate, Rava, ksi, rho0, rho, drho,
                Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ma, Pax) = material
 
-            ksi = convert(eltype(Ex), 1*EPS0*C0/2)   # 1/2 from <cos^2(t)>
             E2 = abs2(Ex[iz])
             II = ksi * E2   # intensity
 
@@ -451,10 +450,9 @@ end
 
         # plasma:
         if isplasma && isgeometry
-            (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
+            (; ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz) = material
 
-            ksi = convert(eltype(Ex), 1*EPS0*C0/2)   # 1/2 from <cos^2(t)>
             E2 = abs2(Ex[ix,iz]) + abs2(Ez[ix,iz])
             II = ksi * E2   # intensity
 
@@ -780,11 +778,10 @@ end
 
         # plasma:
         if isplasma && isgeometry
-            (; ionrate, Rava, rho0, rho, drho, Ap, Bp, Cp,
+            (; ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp,
                Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1, oldPpz2,
                Ma, Pax, Pay, Paz) = material
 
-            ksi = convert(eltype(Ex), 1*EPS0*C0/2)   # 1/2 from <cos^2(t)>
             E2 = abs2(Ex[ix,iy,iz]) + abs2(Ey[ix,iy,iz]) + abs2(Ez[ix,iy,iz])
             II = ksi * E2   # intensity
 
