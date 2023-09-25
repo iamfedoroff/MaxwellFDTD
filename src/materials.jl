@@ -149,12 +149,17 @@ function MaterialStruct(material, grid::Grid1D, dt)
         Ppx, oldPpx1, oldPpx2, Pax = (zeros(1) for i=1:4)
     else
         isplasma = true
+        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
 
         # Field to intensity conversion coefficient (I = ksi*|E|^2)
-        n = sqrt(eps * mu)   # refractive index
+        if isdispersion
+            chi0 = susceptibility(chi, frequency)
+        else
+            chi0 = 0
+        end
+        n = sqrt((eps + real(chi0)) * mu)   # refractive index
         ksi = n * EPS0 * C0 / 2   # 1/2 from <cos^2(t)>
 
-        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
@@ -286,12 +291,17 @@ function MaterialStruct(material, grid::Grid2D, dt)
         Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Pax, Paz = (zeros(1) for i=1:8)
     else
         isplasma = true
+        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
 
         # Field to intensity conversion coefficient (I = ksi*|E|^2)
-        n = sqrt(eps * mu)   # refractive index
+        if isdispersion
+            chi0 = susceptibility(chi, frequency)
+        else
+            chi0 = 0
+        end
+        n = sqrt((eps + real(chi0)) * mu)   # refractive index
         ksi = n * EPS0 * C0 / 2   # 1/2 from <cos^2(t)>
 
-        (; ionrate, rho0, nuc, frequency, Uiev, mr) = plasma
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         Ui = Uiev * QE   # eV -> J
         Wph = HBAR * frequency   # energy of one photon
@@ -436,12 +446,18 @@ function MaterialStruct(material, grid::Grid3D, dt)
         Pax, Pay, Paz = (zeros(1) for i=1:3)
     else
         isplasma = true
+        (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma
 
         # Field to intensity conversion coefficient (I = ksi*|E|^2)
-        n = sqrt(eps * mu)   # refractive index
+        if isdispersion
+            chi0 = susceptibility(chi, frequency)
+        else
+            chi0 = 0
+        end
+        n = sqrt((eps + real(chi0)) * mu)   # refractive index
         ksi = n * EPS0 * C0 / 2   # 1/2 from <cos^2(t)>
 
-        (; rho0, ionrate, nuc, frequency, Uiev, mr) = plasma
+
         Ap, Bp, Cp = ade_plasma_coefficients(nuc, mr, dt)
         rho, drho = (zeros(Nx,Ny,Nz) for i=1:2)
         Ui = Uiev * QE   # eV -> J
@@ -482,6 +498,12 @@ function DebyeSusceptibility(; deps, tau)
 end
 
 
+function susceptibility(chi::DebyeSusceptibility, w)
+    (; deps, tau) = chi
+    return deps / (1 - 1im * w * tau)
+end
+
+
 function ade_coefficients(chi::DebyeSusceptibility, dt)
     (; deps, tau) = chi
     aq = 1 / tau
@@ -502,6 +524,12 @@ end
 
 function DrudeSusceptibility(; wp, gamma)
     return DrudeSusceptibility(promote(wp, gamma)...)
+end
+
+
+function susceptibility(chi::DrudeSusceptibility, w)
+    (; wp, gamma) = chi
+    return -wp^2 / (w^2 + 1im * w * gamma)
 end
 
 
@@ -529,6 +557,12 @@ function LorentzSusceptibility(; deps, w0, delta)
 end
 
 
+function susceptibility(chi::LorentzSusceptibility, w)
+    (; deps, w0, delta) = chi
+    return deps * w0^2 / (w0^2 - w^2 - 2im * w * delta)
+end
+
+
 function ade_coefficients(chi::LorentzSusceptibility, dt)
     (; deps, w0, delta) = chi
     aq = 2 * delta
@@ -538,4 +572,14 @@ function ade_coefficients(chi::LorentzSusceptibility, dt)
     Bq = (aq * dt / 2 - 1) / (aq * dt / 2 + 1)
     Cq = cq * dt^2 / (aq * dt / 2 + 1)
     return Aq, Bq, Cq
+end
+
+
+# ------------------------------------------------------------------------------------------
+function susceptibility(chis::Union{Vector,Tuple}, w)
+    chitot = zero(w)
+    for chi in chis
+        chitot += susceptibility(chi, w)
+    end
+    return chitot
 end
