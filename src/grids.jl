@@ -14,6 +14,19 @@ end
 @adapt_structure Grid1D
 
 
+"""
+    Grid1D(; zmin, zmax, Nz)
+
+1-D grid in z coordinate:
+
+    +-------------+
+    zmin   z   zmax
+
+# Keywords
+- `zmin::Real`: minimum z value
+- `zmax::Real`: maximum z value
+- `Nz::Int`: number of z points
+"""
 function Grid1D(; zmin, zmax, Nz)
     z = range(zmin, zmax, Nz)
     dz = z[2] - z[1]
@@ -39,6 +52,26 @@ end
 @adapt_structure Grid2D
 
 
+"""
+    Grid2D(; xmin, xmax, Nx, zmin, zmax, Nz)
+
+2-D grid in (x,z) coordinates:
+
+    xmax +-------------+
+         |             |
+       x |             |
+         |             |
+    xmin +-------------+
+         zmin   z   zmax
+
+# Keywords
+- `xmin::Real`: minimum x value
+- `xmax::Real`: maximum x value
+- `Nx::Int`: number of x points
+- `zmin::Real`: minimum z value
+- `zmax::Real`: maximum z value
+- `Nz::Int`: number of z points
+"""
 function Grid2D(; xmin, xmax, Nx, zmin, zmax, Nz)
     x = range(xmin, xmax, Nx)
     z = range(zmin, zmax, Nz)
@@ -71,6 +104,33 @@ end
 @adapt_structure Grid3D
 
 
+"""
+    Grid3D(; xmin, xmax, Nx, ymin, ymax, Ny, zmin, zmax, Nz)
+
+3-D grid in (x,y,z) coordinates:
+
+             +-------------+
+            /             /|
+           /             / |
+          /             /  |
+    zmax +-------------+   + xmax
+         |             |  /
+       z |             | / x
+         |             |/
+    zmin +-------------+ xmin
+         ymax   y   ymin
+
+# Keywords
+- `xmin::Real`: minimum x value
+- `xmax::Real`: maximum x value
+- `Nx::Int`: number of x points
+- `ymin::Real`: minimum y value
+- `ymax::Real`: maximum y value
+- `Ny::Int`: number of y points
+- `zmin::Real`: minimum z value
+- `zmax::Real`: maximum z value
+- `Nz::Int`: number of z points
+"""
 function Grid3D(; xmin, xmax, Nx, ymin, ymax, Ny, zmin, zmax, Nz)
     x = range(xmin, xmax, Nx)
     y = range(ymin, ymax, Ny)
