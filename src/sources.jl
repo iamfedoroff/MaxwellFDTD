@@ -14,6 +14,19 @@ struct SoftSource{G, W, P, C} <: Source
 end
 
 
+"""
+    SoftSource(; geometry, waveform, p=nothing, component)
+
+Soft source.
+The source is excited at grid points where the geometry function returns true.
+The waveform function defines the spatial and temporal shapes of the source.
+
+# Keywords
+- `geometry::Function`: geometry function
+- `waveform::Function`: waveform function
+- `p::Tuple=nothing`: parameters for the parametrized waveform function
+- `component::Symbol`: field component to be excited
+"""
 function SoftSource(; geometry, waveform, p=nothing, component)
     return SoftSource(geometry, waveform, p, component)
 end
@@ -108,6 +121,19 @@ struct HardSource{G, W, P, C}  <: Source
 end
 
 
+"""
+    HardSource(; geometry, waveform, p=nothing, component)
+
+Hard source.
+The source is excited at grid points where the geometry function returns true.
+The waveform function defines the spatial and temporal shapes of the source.
+
+# Keywords
+- `geometry::Function`: geometry function
+- `waveform::Function`: waveform function
+- `p::Tuple=nothing`: parameters for the parametrized waveform function
+- `component::Symbol`: field component to be excited
+"""
 function HardSource(; geometry, waveform, p=nothing, component)
     return HardSource(geometry, waveform, p, component)
 end
@@ -200,6 +226,14 @@ struct TFSFSource{F, B}  <: Source
 end
 
 
+"""
+    TFSFSource(fname::String)
+
+Total-Field Scattered-Field (TFSF) source.
+
+# Arguments
+- `fname::String`: the name of file with TFSF source parameters
+"""
 function TFSFSource(fname)
     return TFSFSource(fname, nothing)
 end
