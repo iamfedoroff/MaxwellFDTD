@@ -10,6 +10,21 @@ struct Material{G, T, C, C2, C3, P}
 end
 
 
+"""
+    Material(; kwargs...)
+
+Material position and properties.
+
+# Keywords
+- `geometry::Union{Function,AbstractArray}`: geometry function or array
+- `eps::Real=1`: permittivity
+- `mu::Real=1`: permeability
+- `sigma::Real=0`: conductivity
+- `chi::Susceptibility=nothing`: linear susceptibility
+- `chi2::Real=nothing`: second-order nonlinear susceptibility
+- `chi3::Real=nothing`: third-order nonlinear susceptibility
+- `plasma::Plasma=nothing`: plasma data
+"""
 function Material(;
     geometry, eps=1, mu=1, sigma=0, chi=nothing, chi2=nothing, chi3=nothing, plasma=nothing,
 )
