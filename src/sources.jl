@@ -11,11 +11,12 @@ struct SoftSource{G, W, P, C} <: Source
     waveform :: W
     p :: P
     component :: C
+    explicit :: Bool
 end
 
 
 """
-    SoftSource(; geometry, waveform, p=nothing, component)
+    SoftSource(; geometry, waveform, p=nothing, component, explicit)
 
 Soft source.
 The source is excited at grid points where the geometry function returns true.
@@ -26,73 +27,88 @@ The waveform function defines the spatial and temporal shapes of the source.
 - `waveform::Function`: waveform function
 - `p::Tuple=nothing`: parameters for the parametrized waveform function
 - `component::Symbol`: field component to be excited
+- `explicit::Bool=false`: if true, then interpret the input components of the electric field
+  vector E explicitly; otherwise, translate them to the corresponding components of the
+  electric displacement field vector D
 """
-function SoftSource(; geometry, waveform, p=nothing, component)
-    return SoftSource(geometry, waveform, p, component)
+function SoftSource(; geometry, waveform, p=nothing, component, explicit=false)
+    return SoftSource(geometry, waveform, p, component, explicit)
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct SoftSourceStruct{C, W, P} <: SourceStruct
+struct SoftSourceStruct{C, W, P, T} <: SourceStruct
     isrc :: C
     waveform :: W
     p :: P
     icomp :: Int
+    coeff :: T
 end
 
 @adapt_structure SoftSourceStruct
 
 
 function SourceStruct(source::SoftSource, field, t)
-    (; geometry, waveform, p, component) = source
+    (; geometry, waveform, p, component, explicit) = source
     (; grid) = field
     isrc = geometry2indices(geometry, grid)
+
+    if component in (:Ex, :Ey, :Ez) && !explicit
+        # translate E component to the corresponding D component:
+        component == :Ex ? component = :Dx : nothing
+        component == :Ey ? component = :Dy : nothing
+        component == :Ez ? component = :Dz : nothing
+        coeff = EPS0
+    else
+        coeff = 1
+    end
+
     icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
-    return SoftSourceStruct(isrc, waveform, p, icomp)
+    return SoftSourceStruct(isrc, waveform, p, icomp, coeff)
 end
 
 
 # ------------------------------------------------------------------------------------------
 @kernel function add_source_kernel!(source::SoftSourceStruct, FC, grid::Grid1D, t)
-    (; waveform, p, isrc) = source
+    (; waveform, p, isrc, coeff) = source
     (; z) = grid
     ic = @index(Global)
     @inbounds begin
         iz = isrc[ic]
         if isnothing(p)
-            FC[iz] = FC[iz] + waveform(z[iz], t)
+            FC[iz] = FC[iz] + coeff * waveform(z[iz], t)
         else
-            FC[iz] = FC[iz] + waveform(z[iz], t, p)
+            FC[iz] = FC[iz] + coeff * waveform(z[iz], t, p)
         end
     end
 end
 
 
 @kernel function add_source_kernel!(source::SoftSourceStruct, FC, grid::Grid2D, t)
-    (; waveform, p, isrc) = source
+    (; waveform, p, isrc, coeff) = source
     (; x, z) = grid
     ic = @index(Global)
     @inbounds begin
         ix, iz = isrc[ic][1], isrc[ic][2]
         if isnothing(p)
-            FC[ix,iz] = FC[ix,iz] + waveform(x[ix], z[iz], t)
+            FC[ix,iz] = FC[ix,iz] + coeff * waveform(x[ix], z[iz], t)
         else
-            FC[ix,iz] = FC[ix,iz] + waveform(x[ix], z[iz], t, p)
+            FC[ix,iz] = FC[ix,iz] + coeff * waveform(x[ix], z[iz], t, p)
         end
     end
 end
 
 
 @kernel function add_source_kernel!(source::SoftSourceStruct, FC, grid::Grid3D, t)
-    (; waveform, p, isrc) = source
+    (; waveform, p, isrc, coeff) = source
     (; x, y, z) = grid
     ic = @index(Global)
     @inbounds begin
         ix, iy, iz = isrc[ic][1], isrc[ic][2], isrc[ic][3]
         if isnothing(p)
-            FC[ix,iy,iz] = FC[ix,iy,iz] + waveform(x[ix], y[iy], z[iz], t)
+            FC[ix,iy,iz] = FC[ix,iy,iz] + coeff * waveform(x[ix], y[iy], z[iz], t)
         else
-            FC[ix,iy,iz] = FC[ix,iy,iz] + waveform(x[ix], y[iy], z[iz], t, p)
+            FC[ix,iy,iz] = FC[ix,iy,iz] + coeff * waveform(x[ix], y[iy], z[iz], t, p)
         end
     end
 end
