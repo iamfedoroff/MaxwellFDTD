@@ -51,7 +51,11 @@ end
 function SourceStruct(source::SoftSource, field, t)
     (; geometry, waveform, p, component, explicit) = source
     (; grid) = field
+
     isrc = geometry2indices(geometry, grid)
+    if isempty(isrc)
+        error("I did not find any grid points which satisfy your source geometry.")
+    end
 
     if component in (:Ex, :Ey, :Ez) && !explicit
         # translate E component to the corresponding D component:
@@ -169,7 +173,12 @@ end
 function SourceStruct(source::HardSource, field, t)
     (; geometry, waveform, p, component) = source
     (; grid) = field
+
     isrc = geometry2indices(geometry, grid)
+    if isempty(isrc)
+        error("I did not find any grid points which satisfy your source geometry.")
+    end
+
     icomp = findfirst(isequal(component), fieldnames(typeof(field)))   # Symbol -> Int
     return HardSourceStruct(isrc, waveform, p, icomp)
 end
