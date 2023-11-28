@@ -1,4 +1,4 @@
-mutable struct Output{S, R, I, A}
+mutable struct Output{S, R, I, A1, A2}
     fname :: S
     # Fields data:
     isfields :: Bool
@@ -9,16 +9,20 @@ mutable struct Output{S, R, I, A}
     isviewpoints :: Bool
     ipts :: I   # coordinates of the view points
     # Output variables data:
-    Sa :: A   # averaged poynting vector
+    Sa :: A1   # averaged poynting vector
+    JE :: A2   # losses J*E=sigma*E^2
 end
 
 
 function write_output_variables(out, model)
     (; material) = model
-    (; isplasma, rho, rho0) = material
-    (; fname, Sa) = out
+    (; isplasma, sigma, rho, rho0) = material
+    (; fname, Sa, JE) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Sa"] = collect(Sa)   # averaged poynting vector
+        if ! iszero(sigma)
+            fp["JE"] = collect(JE)   # losses J*E=sigma*E^2
+        end
         if isplasma
             fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
         end
@@ -36,7 +40,7 @@ function Output(
 ) where F <: Field1D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; isplasma) = material
+    (; isplasma, sigma) = material
     (; Nz, z) = grid
 
     if !isdir(dirname(fname))
@@ -97,8 +101,9 @@ function Output(
     end
 
     Sa = zero(Ex)
+    iszero(sigma) ? JE = nothing : JE = zero(Ex)
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa)
+    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, JE)
 end
 
 
@@ -143,10 +148,14 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field1D
-    (; Sa) = out
-    (; field, dt) = model
+    (; Sa, JE) = out
+    (; field, material, dt) = model
     (; Hy, Ex) = field
+    (; sigma, geometry) = material
     @. Sa += sqrt((Ex*Hy)^2) * dt   # averaged poynting vector
+    if ! iszero(sigma)
+        @. JE += geometry * sigma * Ex^2 * dt   # losses J*E=sigma*E^2
+    end
     return nothing
 end
 
@@ -160,7 +169,7 @@ function Output(
 ) where F <: Field2D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; isplasma) = material
+    (; isplasma, sigma) = material
     (; Nx, Nz, x, z) = grid
 
     if !isdir(dirname(fname))
@@ -225,8 +234,9 @@ function Output(
     end
 
     Sa = zero(Ex)
+    iszero(sigma) ? JE = nothing : JE = zero(Ex)
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa)
+    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, JE)
 end
 
 
@@ -273,10 +283,14 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field2D
-    (; Sa) = out
-    (; field, dt) = model
+    (; Sa, JE) = out
+    (; field, material, dt) = model
     (; Hy, Ex, Ez) = field
+    (; sigma, geometry) = material
     @. Sa += sqrt((-Ez*Hy)^2 + (Ex*Hy)^2) * dt   # averaged poynting vector
+    if ! iszero(sigma)
+        @. JE += geometry * sigma * (Ex^2 + Ez^2) * dt   # losses J*E=sigma*E^2
+    end
     return nothing
 end
 
@@ -290,7 +304,7 @@ function Output(
 ) where F <: Field3D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; isplasma) = material
+    (; isplasma, sigma) = material
     (; Nx, Ny, Nz, x, y, z) = grid
 
     if !isdir(dirname(fname))
@@ -363,8 +377,9 @@ function Output(
     end
 
     Sa = zero(Ex)
+    iszero(sigma) ? JE = nothing : JE = zero(Ex)
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa)
+    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, JE)
 end
 
 
@@ -417,11 +432,15 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field3D
-    (; Sa) = out
-    (; field, dt) = model
+    (; Sa, JE) = out
+    (; field, material, dt) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
+    (; sigma, geometry) = material
     # averaged poynting vector:
     @. Sa += sqrt((Ey*Hz - Ez*Hy)^2 + (Ez*Hx - Ex*Hz)^2 + (Ex*Hy - Ey*Hx)^2) * dt
+    if ! iszero(sigma)
+        @. JE += geometry * sigma * (Ex^2 + Ey^2 + Ez^2) * dt   # losses J*E=sigma*E^2:
+    end
     return nothing
 end
 

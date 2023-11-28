@@ -63,6 +63,7 @@ end
 # ******************************************************************************************
 struct MaterialStruct1D{G, T, V, A, B, F}
     geometry :: G
+    sigma :: T   # conductivity
     # Update coefficients for H, E and D fields:
     Mh :: T
     Me :: T
@@ -114,13 +115,14 @@ function MaterialStruct(material, grid::Grid1D, dt)
         geometry = [Bool(geometry[iz]) for iz=1:Nz]
     end
 
-    sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+    sigma = Float64(sigma)
+    sigmaD = sigma / (EPS0*eps)   # J=sigma*E -> J=sigmaD*D
 
     # Update coefficients for H, E and D fields:
     Mh = dt / (MU0*mu)
     Me = 1 / (EPS0*eps)
-    Md1 = (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = dt / (1 + sigma*dt/2)
+    Md1 = (1 - sigmaD*dt/2) / (1 + sigmaD*dt/2)
+    Md2 = dt / (1 + sigmaD*dt/2)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
@@ -186,9 +188,9 @@ function MaterialStruct(material, grid::Grid1D, dt)
     end
 
     return MaterialStruct1D(
-        geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, iskerr,
-        Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1,
-        oldPpx2, Ma, Pax,
+        geometry, sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
+        iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp, Ppx,
+        oldPpx1, oldPpx2, Ma, Pax,
     )
 end
 
@@ -196,6 +198,7 @@ end
 # ------------------------------------------------------------------------------------------
 struct MaterialStruct2D{G, T, V, A, B, F}
     geometry :: G
+    sigma :: T   # conductivity
     # Update coefficients for H, E and D fields:
     Mh :: T
     Me :: T
@@ -254,13 +257,14 @@ function MaterialStruct(material, grid::Grid2D, dt)
         geometry = [Bool(geometry[ix,iz]) for ix=1:Nx, iz=1:Nz]
     end
 
-    sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+    sigma = Float64(sigma)
+    sigmaD = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Update coefficients for H, E and D fields:
     Mh = dt / (MU0*mu)
     Me = 1 / (EPS0*eps)
-    Md1 = (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = dt / (1 + sigma*dt/2)
+    Md1 = (1 - sigmaD*dt/2) / (1 + sigmaD*dt/2)
+    Md2 = dt / (1 + sigmaD*dt/2)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
@@ -329,7 +333,7 @@ function MaterialStruct(material, grid::Grid2D, dt)
     end
 
     return MaterialStruct2D(
-        geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz,
+        geometry, sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz,
         oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap,
         Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
@@ -339,6 +343,7 @@ end
 # ------------------------------------------------------------------------------------------
 struct MaterialStruct3D{G, T, V, A, B, F}
     geometry :: G
+    sigma :: T   # conductivity
     # Update coefficients for H, E and D fields:
     Mh :: T
     Me :: T
@@ -404,13 +409,14 @@ function MaterialStruct(material, grid::Grid3D, dt)
         geometry = [Bool(geometry[ix,iy,iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     end
 
-    sigma = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
+    sigma = Float64(sigma)
+    sigmaD = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
 
     # Update coefficients for H, E and D fields:
     Mh = dt / (MU0*mu)
     Me = 1 / (EPS0*eps)
-    Md1 = (1 - sigma*dt/2) / (1 + sigma*dt/2)
-    Md2 = dt / (1 + sigma*dt/2)
+    Md1 = (1 - sigmaD*dt/2) / (1 + sigmaD*dt/2)
+    Md2 = dt / (1 + sigmaD*dt/2)
 
     # Variables for ADE dispersion calculation:
     if isnothing(chi)
@@ -488,7 +494,7 @@ function MaterialStruct(material, grid::Grid3D, dt)
     end
 
     return MaterialStruct3D(
-        geometry, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py,
+        geometry, sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py,
         oldPy1, oldPy2, Pz, oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi,
         rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz,
         oldPpz1, oldPpz2, Ma, Pax, Pay, Paz,
