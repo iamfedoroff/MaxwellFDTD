@@ -28,6 +28,14 @@ Material position and properties.
 function Material(;
     geometry, eps=1, mu=1, sigma=0, chi=nothing, chi2=nothing, chi3=nothing, plasma=nothing,
 )
+    if eps < 0
+        error(
+            "You specified negative eps=$eps." *
+            " Negative frequency-independent permittivities lead to unstable solutions." *
+            " If you want to model a material with negative permittivity at a given" *
+            " wavelength, use frequency-dependent susceptibility chi."
+        )
+    end
     eps, mu, sigma = promote(eps, mu, sigma)
     return Material(geometry, eps, mu, sigma, chi, chi2, chi3, plasma)
 end
