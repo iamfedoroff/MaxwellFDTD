@@ -40,7 +40,7 @@ function Output(
 ) where F <: Field1D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; isplasma, sigma) = material
+    (; geometry, isplasma, sigma) = material
     (; Nz, z) = grid
 
     if !isdir(dirname(fname))
@@ -77,6 +77,9 @@ function Output(
 
     HDF5.h5open(fname, "w") do fp
         fp["z"] = collect(z)
+        if any(geometry)
+            fp["geometry"] = collect(geometry)
+        end
         if isfields
             group = HDF5.create_group(fp, "fields")
             group["t"] = collect(tout)
@@ -169,7 +172,7 @@ function Output(
 ) where F <: Field2D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; isplasma, sigma) = material
+    (; geometry, isplasma, sigma) = material
     (; Nx, Nz, x, z) = grid
 
     if !isdir(dirname(fname))
@@ -208,6 +211,9 @@ function Output(
     HDF5.h5open(fname, "w") do fp
         fp["x"] = collect(x)
         fp["z"] = collect(z)
+        if any(geometry)
+            fp["geometry"] = collect(geometry)
+        end
         if isfields
             group = HDF5.create_group(fp, "fields")
             group["t"] = collect(tout)
@@ -304,7 +310,7 @@ function Output(
 ) where F <: Field3D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; isplasma, sigma) = material
+    (; geometry, isplasma, sigma) = material
     (; Nx, Ny, Nz, x, y, z) = grid
 
     if !isdir(dirname(fname))
@@ -345,6 +351,9 @@ function Output(
         fp["x"] = collect(x)
         fp["y"] = collect(y)
         fp["z"] = collect(z)
+        if any(geometry)
+            fp["geometry"] = collect(geometry)
+        end
         if isfields
             group = HDF5.create_group(fp, "fields")
             group["t"] = collect(tout)
