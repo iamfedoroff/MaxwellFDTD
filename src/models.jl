@@ -64,7 +64,7 @@ end
 
 
 function solve!(
-    model; arch=CPU(), fname=nothing, nstride=nothing, nframes=nothing, dtout=nothing,
+    model; arch=CPU(), fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     tfsf_record=false, tfsf_fname=nothing, tfsf_box=nothing, viewpoints=nothing,
 )
     model = adapt(arch, model)

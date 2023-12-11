@@ -35,8 +35,8 @@ end
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
 function Output(
-    model::Model{F}; fname="results/1d_out.hdf", nstride=nothing, nframes=nothing,
-    dtout=nothing, viewpoints=nothing,
+    model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
+    viewpoints=nothing,
 ) where F <: Field1D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
@@ -164,8 +164,8 @@ end
 # 2D: d/dy = 0,   (Hy, Ex, Ez)
 # ******************************************************************************************
 function Output(
-    model::Model{F}; fname="results/2d_out.hdf", nstride=nothing, nframes=nothing,
-    dtout=nothing, viewpoints=nothing,
+    model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
+    viewpoints=nothing,
 ) where F <: Field2D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
@@ -299,8 +299,8 @@ end
 # 3D
 # ******************************************************************************************
 function Output(
-    model::Model{F}; fname="results/3d_out.hdf", nstride=nothing, nframes=nothing,
-    dtout=nothing, viewpoints=nothing,
+    model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
+    viewpoints=nothing,
 ) where F <: Field3D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
