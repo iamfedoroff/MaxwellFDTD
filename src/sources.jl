@@ -23,13 +23,14 @@ The source is excited at grid points where the geometry function returns true.
 The waveform function defines the spatial and temporal shapes of the source.
 
 # Keywords
-- `geometry::Function`: geometry function
-- `waveform::Function`: waveform function
-- `p::Tuple=nothing`: parameters for the parametrized waveform function
-- `component::Symbol`: field component to be excited
-- `explicit::Bool=false`: if true, then interpret the input components of the electric field
-  vector E explicitly; otherwise, translate them to the corresponding components of the
-  electric displacement field vector D
+- `geometry::Function`: Function of grid coordinates which defines the location of source.
+- `waveform::Function`: Function of grid coordinates and time which defines the source
+    waveform.
+- `p::Tuple=nothing`: List of parameters for the parametrized waveform function.
+- `component::Symbol`: Field component to be excited.
+- `explicit::Bool=false`: If true, then interpret the input components of the electric field
+    vector E explicitly. Otherwise, translate them to the corresponding components of the
+    electric displacement field vector D.
 """
 function SoftSource(; geometry, waveform, p=nothing, component, explicit=false)
     return SoftSource(geometry, waveform, p, component, explicit)
@@ -149,10 +150,11 @@ The source is excited at grid points where the geometry function returns true.
 The waveform function defines the spatial and temporal shapes of the source.
 
 # Keywords
-- `geometry::Function`: geometry function
-- `waveform::Function`: waveform function
-- `p::Tuple=nothing`: parameters for the parametrized waveform function
-- `component::Symbol`: field component to be excited
+- `geometry::Function`: Function of grid coordinates which defines the location of source.
+- `waveform::Function`: Function of grid coordinates and time which defines the source
+    waveform.
+- `p::Tuple=nothing`: List of parameters for the parametrized waveform function.
+- `component::Symbol`: Field component to be excited.
 """
 function HardSource(; geometry, waveform, p=nothing, component)
     return HardSource(geometry, waveform, p, component)
@@ -257,7 +259,7 @@ end
 Total-Field Scattered-Field (TFSF) source.
 
 # Arguments
-- `fname::String`: the name of file with TFSF source parameters
+- `fname::String`: The name of file with TFSF source parameters.
 """
 function TFSFSource(fname)
     return TFSFSource(fname, nothing)

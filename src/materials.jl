@@ -13,17 +13,19 @@ end
 """
     Material(; kwargs...)
 
-Material position and properties.
+Material location and properties.
 
 # Keywords
-- `geometry::Union{Function,AbstractArray}`: geometry function or array
-- `eps::Real=1`: permittivity
-- `mu::Real=1`: permeability
-- `sigma::Real=0`: conductivity
-- `chi::Susceptibility=nothing`: linear susceptibility
-- `chi2::Real=nothing`: second-order nonlinear susceptibility
-- `chi3::Real=nothing`: third-order nonlinear susceptibility
-- `plasma::Plasma=nothing`: plasma data
+- `geometry::Union{Function,AbstractArray}`: Function of grid coordinates (or the
+    corresponding array) which defines the loccation of material in space: the material is
+    present at any point where the value of geometry in true.
+- `eps::Real=1`: Permittivity.
+- `mu::Real=1`: Permeability.
+- `sigma::Real=0`: Conductivity.
+- `chi::Susceptibility=nothing`: Linear susceptibility.
+- `chi2::Real=nothing`: Second-order nonlinear susceptibility.
+- `chi3::Real=nothing`: Third-order nonlinear susceptibility.
+- `plasma::Plasma=nothing`: Plasma parameters.
 """
 function Material(;
     geometry, eps=1, mu=1, sigma=0, chi=nothing, chi2=nothing, chi3=nothing, plasma=nothing,

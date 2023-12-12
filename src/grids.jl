@@ -23,9 +23,9 @@ end
     zmin   z   zmax
 
 # Keywords
-- `zmin::Real`: minimum z value
-- `zmax::Real`: maximum z value
-- `Nz::Int`: number of z points
+- `zmin::Real`: Minimum z value in meters.
+- `zmax::Real`: Maximum z value in meters.
+- `Nz::Int`: Number of z points.
 """
 function Grid1D(; zmin, zmax, Nz)
     z = range(zmin, zmax, Nz)
@@ -65,12 +65,12 @@ end
          zmin   z   zmax
 
 # Keywords
-- `xmin::Real`: minimum x value
-- `xmax::Real`: maximum x value
-- `Nx::Int`: number of x points
-- `zmin::Real`: minimum z value
-- `zmax::Real`: maximum z value
-- `Nz::Int`: number of z points
+- `xmin::Real`: Minimum x value in meters.
+- `xmax::Real`: Maximum x value in meters.
+- `Nx::Int`: Number of x points.
+- `zmin::Real`: Minimum z value in meters.
+- `zmax::Real`: Maximum z value in meters.
+- `Nz::Int`: Number of z points.
 """
 function Grid2D(; xmin, xmax, Nx, zmin, zmax, Nz)
     x = range(xmin, xmax, Nx)
@@ -121,15 +121,15 @@ end
          ymax   y   ymin
 
 # Keywords
-- `xmin::Real`: minimum x value
-- `xmax::Real`: maximum x value
-- `Nx::Int`: number of x points
-- `ymin::Real`: minimum y value
-- `ymax::Real`: maximum y value
-- `Ny::Int`: number of y points
-- `zmin::Real`: minimum z value
-- `zmax::Real`: maximum z value
-- `Nz::Int`: number of z points
+- `xmin::Real`: Minimum x value in meters.
+- `xmax::Real`: Maximum x value in meters.
+- `Nx::Int`: Number of x points.
+- `ymin::Real`: Minimum y value in meters.
+- `ymax::Real`: Maximum y value in meters.
+- `Ny::Int`: Number of y points.
+- `zmin::Real`: Minimum z value in meters.
+- `zmax::Real`: Maximum z value in meters.
+- `Nz::Int`: Number of z points.
 """
 function Grid3D(; xmin, xmax, Nx, ymin, ymax, Ny, zmin, zmax, Nz)
     x = range(xmin, xmax, Nx)

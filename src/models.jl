@@ -17,7 +17,26 @@ end
 @adapt_structure Model
 
 
-function Model(grid, source; tmax, CN=0.5, material=nothing, pml_box=nothing)
+"""
+Model(grid, source; tmax, CN=0.5, pml_box=nothing, material=nothing)
+
+The model contains all data necessary to run FDTD simulaton.
+
+# Arguments
+- `grid::Grid`: Spatial grid.
+- `source::Source`: Light source.
+
+# Keywords
+- `tmax::Real`: Duration of FDTD simulation in seconds.
+- `CN::Real=0.5`: Courant number which defines the size of the temporal step
+- `pml_box::Tuple=nothing`: The thicknesses of the PML layers along each grid coordinate,
+    e.g. in 1D pml_box=(1e-2,2e-2) will define 1 cm thick PML layer at the left and 2 cm
+    thick PML layer at the right edge of z coordinate. If not provided, then periodic
+    boundary conditions are used.
+- `material::Material=nothing`: Structure with material properties. If not provided, then
+    FDTD simulation is performed in free space.
+"""
+function Model(grid, source; tmax, CN=0.5, pml_box=nothing, material=nothing)
     field = Field(grid)
 
     # Time grid:
@@ -63,9 +82,43 @@ function step!(model, it)
 end
 
 
+"""
+    solve!(model; kwargs...) -> Model
+
+Runs the FDTD simulation and returns the updated model structure. The keyword arguments
+specify the outputs.
+
+# Arguments
+- `model::Model`: Model structure with parameters of FDTD simulation.
+
+# Keywords
+- `arch::ARCH=CPU()`: Architecture (CPU or GPU) to run the simulations on.
+- `fname::String="out.hdf"`: The name of the output file.
+- `nframes::Int=nothing`: The total number of time frames at which the components of the
+    field will be written to the output file.
+- `nstride::Int=nothing`: The components of the field will be written to the output file
+    every 'nstride' time steps.
+- `dtout::Real=nothing`: The components of the field will be written to the output file
+    every 'dtout' time step.
+- `tfsf_record::Bool=false`: If true, then write TFSF source data into a file.
+- `tfsf_fname::String=nothing`: The name of the file where to write the TFSF data.
+- `tfsf_box::Tuple=nothing`: The coordinates of the TFSF box faces.
+- `viewpoints::Tuple{Tuple}=nothing`: List of viewpoints.
+
+# Returns
+- `Model`: Updated model.
+"""
 function solve!(
-    model; arch=CPU(), fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    tfsf_record=false, tfsf_fname=nothing, tfsf_box=nothing, viewpoints=nothing,
+    model;
+    arch=CPU(),
+    fname="out.hdf",
+    nframes=nothing,
+    nstride=nothing,
+    dtout=nothing,
+    tfsf_record=false,
+    tfsf_fname=nothing,
+    tfsf_box=nothing,
+    viewpoints=nothing,
 )
     model = adapt(arch, model)
     (; Nt, dt, t) = model
