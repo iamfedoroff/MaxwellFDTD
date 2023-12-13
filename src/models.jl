@@ -810,19 +810,19 @@ end
             for iq=1:Nq
                 oldPx2[iq,ix,iy,iz] = oldPx1[iq,ix,iy,iz]
                 oldPx1[iq,ix,iy,iz] = Px[iq,ix,iy,iz]
-                Px[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Px[iq,ix,iy,iz] +
-                                  Bq[iq,ix,iy,iz] * oldPx2[iq,ix,iy,iz] +
-                                  Cq[iq,ix,iy,iz] * Ex[ix,iy,iz]
+                Px[iq,ix,iy,iz] = Aq[iq] * Px[iq,ix,iy,iz] +
+                                  Bq[iq] * oldPx2[iq,ix,iy,iz] +
+                                  Cq[iq] * Ex[ix,iy,iz]
                 oldPy2[iq,ix,iy,iz] = oldPy1[iq,ix,iy,iz]
                 oldPy1[iq,ix,iy,iz] = Py[iq,ix,iy,iz]
-                Py[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Py[iq,ix,iy,iz] +
-                                  Bq[iq,ix,iy,iz] * oldPy2[iq,ix,iy,iz] +
-                                  Cq[iq,ix,iy,iz] * Ey[ix,iy,iz]
+                Py[iq,ix,iy,iz] = Aq[iq] * Py[iq,ix,iy,iz] +
+                                  Bq[iq] * oldPy2[iq,ix,iy,iz] +
+                                  Cq[iq] * Ey[ix,iy,iz]
                 oldPz2[iq,ix,iy,iz] = oldPz1[iq,ix,iy,iz]
                 oldPz1[iq,ix,iy,iz] = Pz[iq,ix,iy,iz]
-                Pz[iq,ix,iy,iz] = Aq[iq,ix,iy,iz] * Pz[iq,ix,iy,iz] +
-                                  Bq[iq,ix,iy,iz] * oldPz2[iq,ix,iy,iz] +
-                                  Cq[iq,ix,iy,iz] * Ez[ix,iy,iz]
+                Pz[iq,ix,iy,iz] = Aq[iq] * Pz[iq,ix,iy,iz] +
+                                  Bq[iq] * oldPz2[iq,ix,iy,iz] +
+                                  Cq[iq] * Ez[ix,iy,iz]
                 sumPx += Px[iq,ix,iy,iz]
                 sumPy += Py[iq,ix,iy,iz]
                 sumPz += Pz[iq,ix,iy,iz]
