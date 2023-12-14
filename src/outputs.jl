@@ -10,18 +10,18 @@ mutable struct Output{S, R, I, A1, A2}
     ipts :: I   # coordinates of the view points
     # Output variables data:
     Sa :: A1   # averaged poynting vector
-    JE :: A2   # losses J*E=sigma*E^2
+    E2 :: A2   # averaged E^2
 end
 
 
 function write_output_variables(out, model)
     (; material) = model
-    (; isplasma, sigma, rho, rho0) = material
-    (; fname, Sa, JE) = out
+    (; geometry, isplasma, rho, rho0) = material
+    (; fname, Sa, E2) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Sa"] = collect(Sa)   # averaged poynting vector
-        if ! iszero(sigma)
-            fp["JE"] = collect(JE)   # losses J*E=sigma*E^2
+        if any(geometry)
+            fp["E2"] = collect(E2)   # averaged E^2
         end
         if isplasma
             fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
@@ -40,7 +40,7 @@ function Output(
 ) where F <: Field1D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; geometry, isplasma, sigma) = material
+    (; geometry, isplasma) = material
     (; Nz, z) = grid
 
     if !isdir(dirname(fname))
@@ -104,9 +104,9 @@ function Output(
     end
 
     Sa = zero(Ex)
-    iszero(sigma) ? JE = nothing : JE = zero(Ex)
+    any(geometry) ? E2 = zero(Ex) : E2 = nothing
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, JE)
+    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, E2)
 end
 
 
@@ -151,13 +151,13 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field1D
-    (; Sa, JE) = out
+    (; Sa, E2) = out
     (; field, material, dt) = model
     (; Hy, Ex) = field
-    (; sigma, geometry) = material
+    (; geometry) = material
     @. Sa += sqrt((Ex*Hy)^2) * dt   # averaged poynting vector
-    if ! iszero(sigma)
-        @. JE += geometry * sigma * Ex^2 * dt   # losses J*E=sigma*E^2
+    if any(geometry)
+        @. E2 += Ex^2 * dt   # averaged E^2
     end
     return nothing
 end
@@ -172,7 +172,7 @@ function Output(
 ) where F <: Field2D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; geometry, isplasma, sigma) = material
+    (; geometry, isplasma) = material
     (; Nx, Nz, x, z) = grid
 
     if !isdir(dirname(fname))
@@ -240,9 +240,9 @@ function Output(
     end
 
     Sa = zero(Ex)
-    iszero(sigma) ? JE = nothing : JE = zero(Ex)
+    any(geometry) ? E2 = zero(Ex) : E2 = nothing
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, JE)
+    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, E2)
 end
 
 
@@ -289,13 +289,13 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field2D
-    (; Sa, JE) = out
+    (; Sa, E2) = out
     (; field, material, dt) = model
     (; Hy, Ex, Ez) = field
-    (; sigma, geometry) = material
+    (; geometry) = material
     @. Sa += sqrt((-Ez*Hy)^2 + (Ex*Hy)^2) * dt   # averaged poynting vector
-    if ! iszero(sigma)
-        @. JE += geometry * sigma * (Ex^2 + Ez^2) * dt   # losses J*E=sigma*E^2
+    if any(geometry)
+        @. E2 += (Ex^2 + Ez^2) * dt   # average E^2
     end
     return nothing
 end
@@ -310,7 +310,7 @@ function Output(
 ) where F <: Field3D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
-    (; geometry, isplasma, sigma) = material
+    (; geometry, isplasma) = material
     (; Nx, Ny, Nz, x, y, z) = grid
 
     if !isdir(dirname(fname))
@@ -386,9 +386,9 @@ function Output(
     end
 
     Sa = zero(Ex)
-    iszero(sigma) ? JE = nothing : JE = zero(Ex)
+    any(geometry) ? E2 = zero(Ex) : E2 = nothing
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, JE)
+    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, E2)
 end
 
 
@@ -441,14 +441,14 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field3D
-    (; Sa, JE) = out
+    (; Sa, E2) = out
     (; field, material, dt) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; sigma, geometry) = material
+    (; geometry) = material
     # averaged poynting vector:
     @. Sa += sqrt((Ey*Hz - Ez*Hy)^2 + (Ez*Hx - Ex*Hz)^2 + (Ex*Hy - Ey*Hx)^2) * dt
-    if ! iszero(sigma)
-        @. JE += geometry * sigma * (Ex^2 + Ey^2 + Ez^2) * dt   # losses J*E=sigma*E^2:
+    if any(geometry)
+        @. E2 += (Ex^2 + Ey^2 + Ez^2) * dt   # averaged E^2
     end
     return nothing
 end
