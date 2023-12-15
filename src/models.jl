@@ -136,7 +136,7 @@ function solve!(
         tfsf_data = prepare_tfsf_record(model, tfsf_fname, tfsf_box)
     end
 
-    @showprogress 1 for it=1:Nt
+    @showprogress for it=1:Nt
         @timeit "model step" begin
             step!(model, it)
             if CUDA.functional()
