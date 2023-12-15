@@ -139,6 +139,10 @@ function solve!(
     @showprogress for it=1:Nt
         @timeit "model step" begin
             step!(model, it)
+            if any(isnan.(model.field.Ex))
+                println()
+                error("Something went wrong. I found NaN field values.")
+            end
             if CUDA.functional()
                 synchronize()
             end
