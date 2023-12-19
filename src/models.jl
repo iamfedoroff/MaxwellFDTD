@@ -1,6 +1,7 @@
 struct Model{F, S, P, M, T, R}
     field :: F
     sources :: S
+    bc :: Int
     pml :: P
     material :: M
     # Time grid:
@@ -18,7 +19,7 @@ end
 
 
 """
-Model(grid, source; tmax, CN=0.5, pml_box=nothing, material=nothing)
+Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, material=nothing)
 
 The model contains all data necessary to run FDTD simulaton.
 
@@ -29,6 +30,8 @@ The model contains all data necessary to run FDTD simulaton.
 # Keywords
 - `tmax::Real`: Duration of FDTD simulation in seconds.
 - `CN::Real=0.5`: Courant number which defines the size of the temporal step
+- `bc::Symbol=:periodic`: Type of boundary conditions: ':periodic' for periodic and ':pc'
+    for perfect conductor.
 - `pml_box::Tuple=nothing`: The thicknesses of the PML layers along each grid coordinate,
     e.g. in 1D pml_box=(1e-2,2e-2) will define 1 cm thick PML layer at the left and 2 cm
     thick PML layer at the right edge of z coordinate. If not provided, then periodic
@@ -36,7 +39,7 @@ The model contains all data necessary to run FDTD simulaton.
 - `material::Material=nothing`: Structure with material properties. If not provided, then
     FDTD simulation is performed in free space.
 """
-function Model(grid, source; tmax, CN=0.5, pml_box=nothing, material=nothing)
+function Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, material=nothing)
     field = Field(grid)
 
     # Time grid:
@@ -48,6 +51,17 @@ function Model(grid, source; tmax, CN=0.5, pml_box=nothing, material=nothing)
         source = (source,)
     end
     sources = Tuple([SourceStruct(s, field, t) for s in source])
+
+    if bc == :periodic
+        bc = 1
+    elseif bc == :pc
+        bc = 2
+    else
+        error(
+            "Wrong value of 'bc'. It can be either ':periodic' or ':pc' for periodic or " *
+            "perfect conductor boundary conditions respectively."
+        )
+    end
 
     pml = PML(grid, pml_box, dt)
 
@@ -68,7 +82,7 @@ function Model(grid, source; tmax, CN=0.5, pml_box=nothing, material=nothing)
     Md1 = 1.0
     Md2 = dt
 
-    return Model(field, sources, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
+    return Model(field, sources, bc, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
@@ -181,7 +195,7 @@ end
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field1D
-    (; field, pml, material) = model
+    (; field, bc, pml, material) = model
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
@@ -199,7 +213,13 @@ end
         end
 
         # derivatives E ....................................................................
-        iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        if bc == 1
+            # periodic boundary conditions:
+            iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        else
+            # perfect conductor boundary conditions:
+            iz == Nz ? izp1 = Nz : izp1 = iz + 1
+        end
         dExz = (Ex[izp1] - Ex[iz]) / dz
 
         # apply CPML .......................................................................
@@ -232,7 +252,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
-    (; field, pml, material, dt) = model
+    (; field, bc, pml, material, dt) = model
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -252,7 +272,13 @@ end
         end
 
         # derivatives H ....................................................................
-        iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        if bc == 1
+            # periodic boundary conditions:
+            iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        else
+            # perfect conductor boundary conditions:
+            iz == 1 ? izm1 = 1 : izm1 = iz - 1
+        end
         dHyz = (Hy[iz] - Hy[izm1]) / dz
 
         # apply CPML .......................................................................
@@ -355,7 +381,7 @@ end
 # 2D
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field2D
-    (; field, pml, material) = model
+    (; field, bc, pml, material) = model
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
@@ -373,8 +399,15 @@ end
         end
 
         # derivatives E ....................................................................
-        ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
-        iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        if bc == 1
+            # periodic boundary conditions:
+            ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
+            iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        else
+            # perfect conductor boundary conditions:
+            ix == Nx ? ixp1 = Nx : ixp1 = ix + 1
+            iz == Nz ? izp1 = Nz : izp1 = iz + 1
+        end
         dExz = (Ex[ix,izp1] - Ex[ix,iz]) / dz
         dEzx = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
 
@@ -422,7 +455,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
-    (; field, pml, material, dt) = model
+    (; field, bc, pml, material, dt) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -442,8 +475,15 @@ end
         end
 
         # derivatives H ....................................................................
-        ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
-        iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        if bc == 1
+            # periodic boundary conditions:
+            ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
+            iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        else
+            # perfect conductor boundary conditions:
+            ix == 1 ? ixm1 = 1 : ixm1 = ix - 1
+            iz == 1 ? izm1 = 1 : izm1 = iz - 1
+        end
         dHyx = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
         dHyz = (Hy[ix,iz] - Hy[ix,izm1]) / dz
 
@@ -588,7 +628,7 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_H_kernel!(field::Field3D, pml, material, Mh0)
+@kernel function update_H_kernel!(field::Field3D, bc, pml, material, Mh0)
     (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiEyx1, psiEzx1, xlayer2, psiEyx2, psiEzx2,
@@ -608,9 +648,17 @@ end
         end
 
         # derivatives E ....................................................................
-        ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
-        iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
-        iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        if bc == 1
+            # periodic boundary conditions:
+            ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
+            iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
+            iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        else
+            # perfect conductor boundary conditions:
+            ix == Nx ? ixp1 = Nx : ixp1 = ix + 1
+            iy == Ny ? iyp1 = Ny : iyp1 = iy + 1
+            iz == Nz ? izp1 = Nz : izp1 = iz + 1
+        end
         dExy = (Ex[ix,iyp1,iz] - Ex[ix,iy,iz]) / dy
         dExz = (Ex[ix,iy,izp1] - Ex[ix,iy,iz]) / dz
         dEyx = (Ey[ixp1,iy,iz] - Ey[ix,iy,iz]) / dx
@@ -693,8 +741,8 @@ function update_H!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, pml, material, Mh) = model
-    update_H_kernel!(backend)(field, pml, material, Mh; ndrange)
+    (; field, bc, pml, material, Mh) = model
+    update_H_kernel!(backend)(field, bc, pml, material, Mh; ndrange)
     return nothing
 end
 
@@ -702,7 +750,7 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_E_kernel!(field::Field3D, pml, material, dt, Me0, Md10, Md20)
+@kernel function update_E_kernel!(field::Field3D, bc, pml, material, dt, Me0, Md10, Md20)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
@@ -724,9 +772,17 @@ end
         end
 
         # derivatives H ....................................................................
-        ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
-        iy == 1 ? iym1 = Ny : iym1 = iy - 1
-        iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        if bc == 1
+            # periodic boundary conditions:
+            ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
+            iy == 1 ? iym1 = Ny : iym1 = iy - 1
+            iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        else
+            # perfect conductor boundary conditions::
+            ix == 1 ? ixm1 = 1 : ixm1 = ix - 1
+            iy == 1 ? iym1 = 1 : iym1 = iy - 1
+            iz == 1 ? izm1 = 1 : izm1 = iz - 1
+        end
         dHxy = (Hx[ix,iy,iz] - Hx[ix,iym1,iz]) / dy
         dHxz = (Hx[ix,iy,iz] - Hx[ix,iy,izm1]) / dz
         dHyx = (Hy[ix,iy,iz] - Hy[ixm1,iy,iz]) / dx
@@ -922,8 +978,8 @@ function update_E!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, pml, material, dt, Me, Md1, Md2) = model
-    update_E_kernel!(backend)(field, pml, material, dt, Me, Md1, Md2; ndrange)
+    (; field, bc, pml, material, dt, Me, Md1, Md2) = model
+    update_E_kernel!(backend)(field, bc, pml, material, dt, Me, Md1, Md2; ndrange)
     return nothing
 end
 
