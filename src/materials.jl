@@ -31,11 +31,12 @@ function Material(;
     geometry, eps=1, mu=1, sigma=0, chi=nothing, chi2=nothing, chi3=nothing, plasma=nothing,
 )
     if eps < 0
+        # https://meep.readthedocs.io/en/latest/FAQ/#why-does-my-simulation-diverge-if-the-permittivity-is-less-than-0
         error(
             "You specified negative eps=$eps." *
-            " Negative frequency-independent permittivities lead to unstable solutions." *
-            " If you want to model a material with negative permittivity at a given" *
-            " wavelength, use frequency-dependent susceptibility chi."
+            " Negative, frequency-independent permittivities lead to exponentially" *
+            " growing solutions. To model a material with negative permittivity, use" *
+            " frequency-dependent susceptibility chi."
         )
     end
     eps, mu, sigma = promote(eps, mu, sigma)
