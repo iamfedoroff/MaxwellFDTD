@@ -30,8 +30,8 @@ The model contains all data necessary to run FDTD simulaton.
 # Keywords
 - `tmax::Real`: Duration of FDTD simulation in seconds.
 - `CN::Real=0.5`: Courant number which defines the size of the temporal step
-- `bc::Symbol=:periodic`: Type of boundary conditions: ':periodic' for periodic and ':pc'
-    for perfect conductor.
+- `bc::Symbol=:periodic`: Type of boundary conditions: ':periodic' for periodic,
+    ':dirichlet' for zero fields, and ':neumann' for zero curls.
 - `pml_box::Tuple=nothing`: The thicknesses of the PML layers along each grid coordinate,
     e.g. in 1D pml_box=(1e-2,2e-2) will define 1 cm thick PML layer at the left and 2 cm
     thick PML layer at the right edge of z coordinate. If not provided, then periodic
@@ -54,12 +54,13 @@ function Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, materi
 
     if bc == :periodic
         bc = 1
-    elseif bc == :pc
+    elseif  bc == :dirichlet
         bc = 2
+    elseif bc == :neumann
+        bc = 3
     else
         error(
-            "Wrong value of 'bc'. It can be either ':periodic' or ':pc' for periodic or " *
-            "perfect conductor boundary conditions respectively."
+            "Wrong 'bc' value. It can be either ':periodic', ':dirichlet', or ':neumann'."
         )
     end
 
@@ -213,14 +214,19 @@ end
         end
 
         # derivatives E ....................................................................
-        if bc == 1
-            # periodic boundary conditions:
-            iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        if iz == Nz
+            if bc == 1
+                Ex_izp1 = Ex[1]
+            elseif bc == 2
+                Ex_izp1 = 0
+            elseif bc == 3
+                Ex_izp1 = Ex[iz]
+            end
         else
-            # perfect conductor boundary conditions:
-            iz == Nz ? izp1 = Nz : izp1 = iz + 1
+            Ex_izp1 = Ex[iz+1]
         end
-        dExz = (Ex[izp1] - Ex[iz]) / dz
+        dExz = (Ex_izp1 - Ex[iz]) / dz
 
         # apply CPML .......................................................................
         if iz <= zlayer1.ind   # z left layer [1:iz1]
@@ -272,14 +278,19 @@ end
         end
 
         # derivatives H ....................................................................
-        if bc == 1
-            # periodic boundary conditions:
-            iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        if iz == 1
+            if bc == 1
+                Hy_izm1 = Hy[Nz]
+            elseif bc == 2
+                Hy_izm1 = 0
+            elseif bc == 3
+                Hy_izm1 = Hy[iz]
+            end
         else
-            # perfect conductor boundary conditions:
-            iz == 1 ? izm1 = 1 : izm1 = iz - 1
+            Hy_izm1 = Hy[iz-1]
         end
-        dHyz = (Hy[iz] - Hy[izm1]) / dz
+        dHyz = (Hy[iz] - Hy_izm1) / dz
 
         # apply CPML .......................................................................
         if iz <= zlayer1.ind   # z left layer [1:iz1]
@@ -399,17 +410,31 @@ end
         end
 
         # derivatives E ....................................................................
-        if bc == 1
-            # periodic boundary conditions:
-            ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
-            iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        if ix == Nx
+            if bc == 1
+                Ez_ixp1 = Ez[1,iz]
+            elseif bc == 2
+                Ez_ixp1 = 0
+            elseif bc == 3
+                Ez_ixp1 = Ez[ix,iz]
+            end
         else
-            # perfect conductor boundary conditions:
-            ix == Nx ? ixp1 = Nx : ixp1 = ix + 1
-            iz == Nz ? izp1 = Nz : izp1 = iz + 1
+            Ez_ixp1 = Ez[ix+1,iz]
         end
-        dExz = (Ex[ix,izp1] - Ex[ix,iz]) / dz
-        dEzx = (Ez[ixp1,iz] - Ez[ix,iz]) / dx
+        if iz == Nz
+            if bc == 1
+                Ex_izp1 = Ex[ix,1]
+            elseif bc == 2
+                Ex_izp1 = 0
+            elseif bc == 3
+                Ex_izp1 = Ex[ix,iz]
+            end
+        else
+            Ex_izp1 = Ex[ix,iz+1]
+        end
+        dExz = (Ex_izp1 - Ex[ix,iz]) / dz
+        dEzx = (Ez_ixp1 - Ez[ix,iz]) / dx
 
         # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
@@ -475,17 +500,31 @@ end
         end
 
         # derivatives H ....................................................................
-        if bc == 1
-            # periodic boundary conditions:
-            ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
-            iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        if ix == 1
+            if bc == 1
+                Hy_ixm1 = Hy[Nx,iz]
+            elseif bc == 2
+                Hy_ixm1 = 0
+            elseif bc == 3
+                Hy_ixm1 = Hy[ix,iz]
+            end
         else
-            # perfect conductor boundary conditions:
-            ix == 1 ? ixm1 = 1 : ixm1 = ix - 1
-            iz == 1 ? izm1 = 1 : izm1 = iz - 1
+            Hy_ixm1 = Hy[ix-1,iz]
         end
-        dHyx = (Hy[ix,iz] - Hy[ixm1,iz]) / dx
-        dHyz = (Hy[ix,iz] - Hy[ix,izm1]) / dz
+        if iz == 1
+            if bc == 1
+                Hy_izm1 =  Hy[ix,Nz]
+            elseif bc == 2
+                Hy_izm1 = 0
+            elseif bc == 3
+                Hy_izm1 = Hy[ix,iz]
+            end
+        else
+            Hy_izm1 = Hy[ix,iz-1]
+        end
+        dHyx = (Hy[ix,iz] - Hy_ixm1) / dx
+        dHyz = (Hy[ix,iz] - Hy_izm1) / dz
 
         # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
@@ -648,23 +687,59 @@ end
         end
 
         # derivatives E ....................................................................
-        if bc == 1
-            # periodic boundary conditions:
-            ix == Nx ? ixp1 = 1 : ixp1 = ix + 1
-            iy == Ny ? iyp1 = 1 : iyp1 = iy + 1
-            iz == Nz ? izp1 = 1 : izp1 = iz + 1
+        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        if ix == Nx
+            if bc == 1
+                Ey_ixp1 = Ey[1,iy,iz]
+                Ez_ixp1 = Ez[1,iy,iz]
+            elseif bc == 2
+                Ey_ixp1 = 0
+                Ez_ixp1 = 0
+            elseif bc == 3
+                Ey_ixp1 = Ey[ix,iy,iz]
+                Ez_ixp1 = Ez[ix,iy,iz]
+            end
         else
-            # perfect conductor boundary conditions:
-            ix == Nx ? ixp1 = Nx : ixp1 = ix + 1
-            iy == Ny ? iyp1 = Ny : iyp1 = iy + 1
-            iz == Nz ? izp1 = Nz : izp1 = iz + 1
+            Ey_ixp1 = Ey[ix+1,iy,iz]
+            Ez_ixp1 = Ez[ix+1,iy,iz]
         end
-        dExy = (Ex[ix,iyp1,iz] - Ex[ix,iy,iz]) / dy
-        dExz = (Ex[ix,iy,izp1] - Ex[ix,iy,iz]) / dz
-        dEyx = (Ey[ixp1,iy,iz] - Ey[ix,iy,iz]) / dx
-        dEyz = (Ey[ix,iy,izp1] - Ey[ix,iy,iz]) / dz
-        dEzx = (Ez[ixp1,iy,iz] - Ez[ix,iy,iz]) / dx
-        dEzy = (Ez[ix,iyp1,iz] - Ez[ix,iy,iz]) / dy
+        if iy == Ny
+            if bc == 1
+                Ex_iyp1 = Ex[ix,1,iz]
+                Ez_iyp1 = Ez[ix,1,iz]
+            elseif bc == 2
+                Ex_iyp1 = 0
+                Ez_iyp1 = 0
+            elseif bc == 3
+                Ex_iyp1 = Ex[ix,iy,iz]
+                Ez_iyp1 = Ez[ix,iy,iz]
+            end
+        else
+            Ex_iyp1 = Ex[ix,iy+1,iz]
+            Ez_iyp1 = Ez[ix,iy+1,iz]
+        end
+        if iz == Nz
+            if bc == 1
+                Ex_izp1 = Ex[ix,iy,1]
+                Ey_izp1 = Ey[ix,iy,1]
+            elseif bc == 2
+                Ex_izp1 = 0
+                Ey_izp1 = 0
+            elseif bc == 3
+                Ex_izp1 = Ex[ix,iy,iz]
+                Ey_izp1 = Ey[ix,iy,iz]
+            end
+        else
+            Ex_izp1 = Ex[ix,iy,iz+1]
+            Ey_izp1 = Ey[ix,iy,iz+1]
+        end
+        dExy = (Ex_iyp1 - Ex[ix,iy,iz]) / dy
+        dExz = (Ex_izp1 - Ex[ix,iy,iz]) / dz
+        dEyx = (Ey_ixp1 - Ey[ix,iy,iz]) / dx
+        dEyz = (Ey_izp1 - Ey[ix,iy,iz]) / dz
+        dEzx = (Ez_ixp1 - Ez[ix,iy,iz]) / dx
+        dEzy = (Ez_iyp1 - Ez[ix,iy,iz]) / dy
+
 
         # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
@@ -772,23 +847,58 @@ end
         end
 
         # derivatives H ....................................................................
-        if bc == 1
-            # periodic boundary conditions:
-            ix == 1 ? ixm1 = Nx : ixm1 = ix - 1
-            iy == 1 ? iym1 = Ny : iym1 = iy - 1
-            iz == 1 ? izm1 = Nz : izm1 = iz - 1
+        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        if ix == 1
+            if bc == 1
+                Hy_ixm1 = Hy[Nx,iy,iz]
+                Hz_ixm1 = Hz[Nx,iy,iz]
+            elseif bc == 2
+                Hy_ixm1 = 0
+                Hz_ixm1 = 0
+            elseif bc == 3
+                Hy_ixm1 = Hy[ix,iy,iz]
+                Hz_ixm1 = Hz[ix,iy,iz]
+            end
         else
-            # perfect conductor boundary conditions::
-            ix == 1 ? ixm1 = 1 : ixm1 = ix - 1
-            iy == 1 ? iym1 = 1 : iym1 = iy - 1
-            iz == 1 ? izm1 = 1 : izm1 = iz - 1
+            Hy_ixm1 = Hy[ix-1,iy,iz]
+            Hz_ixm1 = Hz[ix-1,iy,iz]
         end
-        dHxy = (Hx[ix,iy,iz] - Hx[ix,iym1,iz]) / dy
-        dHxz = (Hx[ix,iy,iz] - Hx[ix,iy,izm1]) / dz
-        dHyx = (Hy[ix,iy,iz] - Hy[ixm1,iy,iz]) / dx
-        dHyz = (Hy[ix,iy,iz] - Hy[ix,iy,izm1]) / dz
-        dHzx = (Hz[ix,iy,iz] - Hz[ixm1,iy,iz]) / dx
-        dHzy = (Hz[ix,iy,iz] - Hz[ix,iym1,iz]) / dy
+        if iy == 1
+            if bc == 1
+                Hx_iym1 = Hx[ix,Ny,iz]
+                Hz_iym1 = Hz[ix,Ny,iz]
+            elseif bc == 2
+                Hx_iym1 = 0
+                Hz_iym1 = 0
+            elseif bc == 3
+                Hx_iym1 = Hx[ix,iy,iz]
+                Hz_iym1 = Hz[ix,iy,iz]
+            end
+        else
+            Hx_iym1 = Hx[ix,iy-1,iz]
+            Hz_iym1 = Hz[ix,iy-1,iz]
+        end
+        if iz == 1
+            if bc == 1
+                Hx_izm1 = Hx[ix,iy,Nz]
+                Hy_izm1 = Hy[ix,iy,Nz]
+            elseif bc == 2
+                Hx_izm1 = 0
+                Hy_izm1 = 0
+            elseif bc == 3
+                Hx_izm1 = Hx[ix,iy,iz]
+                Hy_izm1 = Hy[ix,iy,iz]
+            end
+        else
+            Hx_izm1 = Hx[ix,iy,iz-1]
+            Hy_izm1 = Hy[ix,iy,iz-1]
+        end
+        dHxy = (Hx[ix,iy,iz] - Hx_iym1) / dy
+        dHxz = (Hx[ix,iy,iz] - Hx_izm1) / dz
+        dHyx = (Hy[ix,iy,iz] - Hy_ixm1) / dx
+        dHyz = (Hy[ix,iy,iz] - Hy_izm1) / dz
+        dHzx = (Hz[ix,iy,iz] - Hz_ixm1) / dx
+        dHzy = (Hz[ix,iy,iz] - Hz_iym1) / dy
 
         # apply CPML .......................................................................
         if ix <= xlayer1.ind   # x left layer [1:ix1]
