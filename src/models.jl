@@ -1,7 +1,7 @@
-struct Model{F, S, P, M, T, R}
+struct Model{F, S, B, P, M, T, R}
     field :: F
     sources :: S
-    bc :: Int
+    bcs :: B
     pml :: P
     material :: M
     # Time grid:
@@ -29,13 +29,17 @@ The model contains all data necessary to run FDTD simulaton.
 
 # Keywords
 - `tmax::Real`: Duration of FDTD simulation in seconds.
-- `CN::Real=0.5`: Courant number which defines the size of the temporal step
-- `bc::Symbol=:periodic`: Type of boundary conditions: ':periodic' for periodic,
-    ':dirichlet' for zero fields, and ':neumann' for zero curls.
+- `CN::Real=0.5`: Courant number which defines the size of the temporal step.
+- `bc::Union{Symbol,Tuple}=:periodic`: Type of boundary conditions (:periodic, :dirichlet
+    for zero fields, and :neumann for zero curls) on each grid boundary. In case of a single
+    'bc' value (e.g. bc=:periodic) that value applies to all boundaries. If you want to
+    control the boundary conditions for each grid boundary individually, provide the tuple
+    of 'bc' values. For example, in 2D bc=(:periodic,:periodic,:dirichlet,:dirichlet) will
+    set the periodic boundary conditions along the x boundaries and the Dirichlet ones along
+    the z boundaries.
 - `pml_box::Tuple=nothing`: The thicknesses of the PML layers along each grid coordinate,
     e.g. in 1D pml_box=(1e-2,2e-2) will define 1 cm thick PML layer at the left and 2 cm
-    thick PML layer at the right edge of z coordinate. If not provided, then periodic
-    boundary conditions are used.
+    thick PML layer at the right edge of z coordinate.
 - `material::Material=nothing`: Structure with material properties. If not provided, then
     FDTD simulation is performed in free space.
 """
@@ -52,16 +56,11 @@ function Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, materi
     end
     sources = Tuple([SourceStruct(s, field, t) for s in source])
 
-    if bc == :periodic
-        bc = 1
-    elseif  bc == :dirichlet
-        bc = 2
-    elseif bc == :neumann
-        bc = 3
+    if typeof(bc) == Symbol
+        N = 2 * ndims(field.Ex)
+        bcs = Tuple(bc2int(bc) for i=1:N)
     else
-        error(
-            "Wrong 'bc' value. It can be either ':periodic', ':dirichlet', or ':neumann'."
-        )
+        bcs = Tuple(bc2int(x) for x in bc)
     end
 
     pml = PML(grid, pml_box, dt)
@@ -83,7 +82,7 @@ function Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, materi
     Md1 = 1.0
     Md2 = dt
 
-    return Model(field, sources, bc, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
+    return Model(field, sources, bcs, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
@@ -196,7 +195,7 @@ end
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field1D
-    (; field, bc, pml, material) = model
+    (; field, bcs, pml, material) = model
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
@@ -214,13 +213,14 @@ end
         end
 
         # derivatives E ....................................................................
-        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        # dirichlet = zero field, neumann = zero curl
         if iz == Nz
-            if bc == 1
+            bc = bcs[2]   # z right boundary
+            if isperiodic(bc)
                 Ex_izp1 = Ex[1]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Ex_izp1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Ex_izp1 = Ex[iz]
             end
         else
@@ -258,7 +258,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
-    (; field, bc, pml, material, dt) = model
+    (; field, bcs, pml, material, dt) = model
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -278,13 +278,14 @@ end
         end
 
         # derivatives H ....................................................................
-        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        # dirichlet = zero field, neumann = zero curl
         if iz == 1
-            if bc == 1
+            bc = bcs[1]   # z left boundary
+            if isperiodic(bc)
                 Hy_izm1 = Hy[Nz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Hy_izm1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Hy_izm1 = Hy[iz]
             end
         else
@@ -392,7 +393,7 @@ end
 # 2D
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field2D
-    (; field, bc, pml, material) = model
+    (; field, bcs, pml, material) = model
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
@@ -410,24 +411,26 @@ end
         end
 
         # derivatives E ....................................................................
-        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        # dirichlet = zero field, neumann = zero curl
         if ix == Nx
-            if bc == 1
+            bc = bcs[2]   # x right boundary
+            if isperiodic(bc)
                 Ez_ixp1 = Ez[1,iz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Ez_ixp1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Ez_ixp1 = Ez[ix,iz]
             end
         else
             Ez_ixp1 = Ez[ix+1,iz]
         end
         if iz == Nz
-            if bc == 1
+            bc = bcs[4]   # z right boundary
+            if isperiodic(bc)
                 Ex_izp1 = Ex[ix,1]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Ex_izp1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Ex_izp1 = Ex[ix,iz]
             end
         else
@@ -480,7 +483,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
-    (; field, bc, pml, material, dt) = model
+    (; field, bcs, pml, material, dt) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -500,24 +503,26 @@ end
         end
 
         # derivatives H ....................................................................
-        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        # dirichlet = zero field, neumann = zero curl
         if ix == 1
-            if bc == 1
+            bc = bcs[1]   # x left boundary
+            if isperiodic(bc)
                 Hy_ixm1 = Hy[Nx,iz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Hy_ixm1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Hy_ixm1 = Hy[ix,iz]
             end
         else
             Hy_ixm1 = Hy[ix-1,iz]
         end
         if iz == 1
-            if bc == 1
+            bc = bcs[3]   # z left boundary
+            if isperiodic(bc)
                 Hy_izm1 =  Hy[ix,Nz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Hy_izm1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Hy_izm1 = Hy[ix,iz]
             end
         else
@@ -667,7 +672,7 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_H_kernel!(field::Field3D, bc, pml, material, Mh0)
+@kernel function update_H_kernel!(field::Field3D, bcs, pml, material, Mh0)
     (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiEyx1, psiEzx1, xlayer2, psiEyx2, psiEzx2,
@@ -687,15 +692,16 @@ end
         end
 
         # derivatives E ....................................................................
-        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        # dirichlet = zero field, neumann = zero curl
         if ix == Nx
-            if bc == 1
+            bc = bcs[2]   # x right boundary
+            if isperiodic(bc)
                 Ey_ixp1 = Ey[1,iy,iz]
                 Ez_ixp1 = Ez[1,iy,iz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Ey_ixp1 = 0
                 Ez_ixp1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Ey_ixp1 = Ey[ix,iy,iz]
                 Ez_ixp1 = Ez[ix,iy,iz]
             end
@@ -704,13 +710,14 @@ end
             Ez_ixp1 = Ez[ix+1,iy,iz]
         end
         if iy == Ny
-            if bc == 1
+            bc = bcs[4]   # y right boundary
+            if isperiodic(bc)
                 Ex_iyp1 = Ex[ix,1,iz]
                 Ez_iyp1 = Ez[ix,1,iz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Ex_iyp1 = 0
                 Ez_iyp1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Ex_iyp1 = Ex[ix,iy,iz]
                 Ez_iyp1 = Ez[ix,iy,iz]
             end
@@ -719,13 +726,14 @@ end
             Ez_iyp1 = Ez[ix,iy+1,iz]
         end
         if iz == Nz
-            if bc == 1
+            bc = bcs[6]   # z right boundary
+            if isperiodic(bc)
                 Ex_izp1 = Ex[ix,iy,1]
                 Ey_izp1 = Ey[ix,iy,1]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Ex_izp1 = 0
                 Ey_izp1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Ex_izp1 = Ex[ix,iy,iz]
                 Ey_izp1 = Ey[ix,iy,iz]
             end
@@ -816,8 +824,8 @@ function update_H!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, bc, pml, material, Mh) = model
-    update_H_kernel!(backend)(field, bc, pml, material, Mh; ndrange)
+    (; field, bcs, pml, material, Mh) = model
+    update_H_kernel!(backend)(field, bcs, pml, material, Mh; ndrange)
     return nothing
 end
 
@@ -825,7 +833,7 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_E_kernel!(field::Field3D, bc, pml, material, dt, Me0, Md10, Md20)
+@kernel function update_E_kernel!(field::Field3D, bcs, pml, material, dt, Me0, Md10, Md20)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
@@ -847,15 +855,16 @@ end
         end
 
         # derivatives H ....................................................................
-        # bc=1 - periodic, bc=2 - dirichlet (zero field), bc=3 - neumann (zero curl)
+        # dirichlet = zero field, neumann = zero curl
         if ix == 1
-            if bc == 1
+            bc = bcs[1]   # x left boundary
+            if isperiodic(bc)
                 Hy_ixm1 = Hy[Nx,iy,iz]
                 Hz_ixm1 = Hz[Nx,iy,iz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Hy_ixm1 = 0
                 Hz_ixm1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Hy_ixm1 = Hy[ix,iy,iz]
                 Hz_ixm1 = Hz[ix,iy,iz]
             end
@@ -864,13 +873,14 @@ end
             Hz_ixm1 = Hz[ix-1,iy,iz]
         end
         if iy == 1
-            if bc == 1
+            bc = bcs[3]   # y left boundary
+            if isperiodic(bc)
                 Hx_iym1 = Hx[ix,Ny,iz]
                 Hz_iym1 = Hz[ix,Ny,iz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Hx_iym1 = 0
                 Hz_iym1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Hx_iym1 = Hx[ix,iy,iz]
                 Hz_iym1 = Hz[ix,iy,iz]
             end
@@ -879,13 +889,14 @@ end
             Hz_iym1 = Hz[ix,iy-1,iz]
         end
         if iz == 1
-            if bc == 1
+            bc = bcs[5]   # z left boundary
+            if isperiodic(bc)
                 Hx_izm1 = Hx[ix,iy,Nz]
                 Hy_izm1 = Hy[ix,iy,Nz]
-            elseif bc == 2
+            elseif isdirichlet(bc)
                 Hx_izm1 = 0
                 Hy_izm1 = 0
-            elseif bc == 3
+            elseif isneumann(bc)
                 Hx_izm1 = Hx[ix,iy,iz]
                 Hy_izm1 = Hy[ix,iy,iz]
             end
@@ -1088,8 +1099,8 @@ function update_E!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, bc, pml, material, dt, Me, Md1, Md2) = model
-    update_E_kernel!(backend)(field, bc, pml, material, dt, Me, Md1, Md2; ndrange)
+    (; field, bcs, pml, material, dt, Me, Md1, Md2) = model
+    update_E_kernel!(backend)(field, bcs, pml, material, dt, Me, Md1, Md2; ndrange)
     return nothing
 end
 
@@ -1137,3 +1148,24 @@ function moving_average(A::AbstractArray, m::Int)
     end
     return out
 end
+
+
+function bc2int(bc)
+    if bc == :periodic
+        bc = 1
+    elseif  bc == :dirichlet
+        bc = 2
+    elseif bc == :neumann
+        bc = 3
+    else
+        error(
+            "Wrong 'bc' value. It can be either ':periodic', ':dirichlet', or ':neumann'."
+        )
+    end
+    return bc
+end
+
+
+isperiodic(bc) = bc == 1
+isdirichlet(bc) = bc == 2
+isneumann(bc) = bc == 3
