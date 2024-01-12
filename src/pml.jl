@@ -7,6 +7,33 @@ struct PMLData{T}
 end
 
 
+"""
+CPML(; thickness, kappa=1, alpha=10e-6, R0=10e-6, m=3)
+
+Convolutional perfectly matched layer with the stretching parameter
+
+    s = kappa + sigma / (alpha - 1im*omega),
+
+where
+
+    sigma = sigma_max * (x/L)^m
+
+with
+
+    sigma_max = -(m+1)*log(R0) / (2*eta0*L).
+
+Here x is the coordinate along the given direction, L is thickness of the PML layer, R0 is
+the theoretical reflection coefficient of the PML layer at normal incidence, and eta0 is the
+impedance of free space.
+
+# Keywords
+- `thickness::Real`: Thickness L of the PML layer.
+- `kappa::Real=1`: kappa parameter.
+- `alpha::Real=10e-6`: alpha parameter.
+- `R0::Real=10e-6`: The theoretical reflection coefficient R0 of the PML layer at normal
+    incidence
+- `m::Int=3`: The power of the losses profile.
+"""
 function CPML(; thickness, kappa=1, alpha=10e-6, R0=10e-6, m=3)
     thickness, kappa, alpha, R0 = promote(thickness, kappa, alpha, R0)
     return PMLData(thickness, kappa, alpha, R0, m)
@@ -100,13 +127,13 @@ end
 @adapt_structure PML1D
 
 
-function PML(grid::Grid1D, box, dt)
+function PML(grid::Grid1D, pml, dt)
     (; Nz, z) = grid
 
-    if isnothing(box)
-        Lz1, Lz2 = 0, 0
+    if typeof(pml) <: Real
+        Lz1 = Lz2 = pml
     else
-        Lz1, Lz2 = box
+        Lz1, Lz2 = pml
     end
 
     if typeof(Lz1) <: PMLData
@@ -159,13 +186,13 @@ end
 @adapt_structure PML2D
 
 
-function PML(grid::Grid2D, box, dt)
+function PML(grid::Grid2D, pml, dt)
     (; Nx, Nz, x, z) = grid
 
-    if isnothing(box)
-        Lx1, Lx2, Lz1, Lz2 = 0, 0, 0, 0
+    if typeof(pml) <: Real
+        Lx1 = Lx2 = Lz1 = Lz2 = pml
     else
-        Lx1, Lx2, Lz1, Lz2 = box
+        Lx1, Lx2, Lz1, Lz2 = pml
     end
 
     if typeof(Lx1) <: PMLData
@@ -258,13 +285,13 @@ end
 @adapt_structure PML3D
 
 
-function PML(grid::Grid3D, box, dt)
+function PML(grid::Grid3D, pml, dt)
     (; Nx, Ny, Nz, x, y, z) = grid
 
-    if isnothing(box)
-        Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = 0, 0, 0, 0, 0, 0
+    if typeof(pml) <: Real
+        Lx1 = Lx2 = Ly1 = Ly2 = Lz1 = Lz2 = pml
     else
-        Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = box
+        Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = pml
     end
 
     if typeof(Lx1) <: PMLData

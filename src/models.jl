@@ -19,7 +19,7 @@ end
 
 
 """
-Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, material=nothing)
+Model(grid, source; tmax, CN=0.5, bc=:periodic, pml=0, material=nothing)
 
 The model contains all data necessary to run FDTD simulaton.
 
@@ -30,20 +30,29 @@ The model contains all data necessary to run FDTD simulaton.
 # Keywords
 - `tmax::Real`: Duration of FDTD simulation in seconds.
 - `CN::Real=0.5`: Courant number which defines the size of the temporal step.
-- `bc::Union{Symbol,Tuple}=:periodic`: Type of boundary conditions (:periodic, :dirichlet
-    for zero fields, and :neumann for zero curls) on each grid boundary. In case of a single
-    'bc' value (e.g. bc=:periodic) that value applies to all boundaries. If you want to
-    control the boundary conditions for each grid boundary individually, provide the tuple
-    of 'bc' values. For example, in 2D bc=(:periodic,:periodic,:dirichlet,:dirichlet) will
-    set the periodic boundary conditions along the x boundaries and the Dirichlet ones along
-    the z boundaries.
-- `pml_box::Tuple=nothing`: The thicknesses of the PML layers along each grid coordinate,
-    e.g. in 1D pml_box=(1e-2,2e-2) will define 1 cm thick PML layer at the left and 2 cm
-    thick PML layer at the right edge of z coordinate.
+- `bc::Union{Symbol,Tuple}=:periodic`: Boundary conditions for grid boundaries. Possible
+    types of boundary conditions are :periodic, :dirichlet (zero fields), and :neumann
+    (zero curls). In case of a single 'bc' value (e.g. bc=:periodic) that value applies to
+    all grid boundaries. If you want to control the boundary conditions for each boundary
+    individually, provide the tuple with two 'bc' values for each grid dimension:
+    bc=(zleft,zright) for 1D, bc=(xleft,xright,zleft,zright) for 2D, and
+    bc=(xleft,xright,yleft,yright,zleft,zright) for 3D. For example, for 2D grid
+    bc=(:periodic,:periodic,:dirichlet,:dirichlet) will set the periodic boundary conditions
+    along the x boundaries and the Dirichlet ones along the z boundaries.
+- `pml::Union{Real,Tuple}=0`: PML layers at grid edges. In case of a single real value (e.g,
+    pml=1e-6), it gives the thickness of all PML layers; in case of a tuple, it defines the
+    thickness of individual PML layers at each grid edge: pml=(zleft,zright) for 1D,
+    pml=(xleft,xright,zleft,zright) for 2D, and pml=(xleft,xright,yleft,yright,zleft,zright)
+    for 3D. For example, for 2D grid pml=(1e-6,1e-6,2e-6,2e-6) will set 1um thick PML layers
+    along x and 2um thick ones along z. The zero value corresponds to the absence of PML
+    layer. Additionally, instead of each real value representing the PML layer thickness,
+    you can pass a CPML structure to fine-tune the PML parameters.
 - `material::Material=nothing`: Structure with material properties. If not provided, then
     FDTD simulation is performed in free space.
 """
-function Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, material=nothing)
+function Model(
+    grid, source; tmax, CN=0.5, bc=:periodic, pml=0, pml_box=nothing, material=nothing,
+)
     field = Field(grid)
 
     # Time grid:
@@ -63,7 +72,12 @@ function Model(grid, source; tmax, CN=0.5, bc=:periodic, pml_box=nothing, materi
         bcs = Tuple(bc2int(x) for x in bc)
     end
 
-    pml = PML(grid, pml_box, dt)
+    if ! isnothing(pml_box)
+        @warn "Keyword argument 'pml_box' is deprecated. Use 'pml' instead."
+        pml = PML(grid, pml_box, dt)
+    else
+        pml = PML(grid, pml, dt)
+    end
 
     material = MaterialStruct(material, grid, dt)
 

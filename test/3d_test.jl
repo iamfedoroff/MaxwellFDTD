@@ -20,7 +20,7 @@ source = HardSource(
     component = :Ex,
 )
 
-model = Model(grid, source; tmax=150e-15, pml_box=(4e-6,4e-6,4e-6,4e-6,4e-6,4e-6))
+model = Model(grid, source; tmax=150e-15, pml=4e-6)
 
 (; Nx, Ny, Nz, x, y, z) = grid
 Eth = zeros(Nx, Ny, Nz)

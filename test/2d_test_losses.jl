@@ -44,8 +44,6 @@ end
 lam0 = 2e-6   # (m) central wavelength
 w0 = 2*pi * C0 / lam0   # central frequency
 
-pml_box = (5e-6, 5e-6, 5e-6, 5e-6)
-
 
 # ******************************************************************************************
 # Conductivity losses
@@ -58,7 +56,7 @@ ki = ni * w0 / C0   # imaginary part of wavevector
 
 material = Material(geometry=material_geometry, eps=er, sigma=sigma)
 
-model = Model(grid, source; tmax=300e-15, pml_box, material)
+model = Model(grid, source; tmax=300e-15, pml=5e-6, material)
 
 solve!(model; fname)
 @test test_intensity_losses_2D(fname, ki)
@@ -82,7 +80,7 @@ ki = imag(n0) * w0 / C0   # imaginary part of wavevector
 
 material = Material(geometry=material_geometry, chi=chi)
 
-model = Model(grid, source; tmax=600e-15, pml_box, material)
+model = Model(grid, source; tmax=600e-15, pml=5e-6, material)
 
 solve!(model; fname)
 @test test_intensity_losses_2D(fname, ki)
