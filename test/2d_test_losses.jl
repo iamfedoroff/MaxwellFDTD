@@ -62,7 +62,7 @@ solve!(model; fname)
 @test test_intensity_losses_2D(fname, ki)
 
 if CUDA.functional()
-    solve!(model; fname, arch=GPU())
+    solve!(model; fname, backend=GPU())
     @test test_intensity_losses_2D(fname, ki)
 end
 
@@ -86,6 +86,6 @@ solve!(model; fname)
 @test test_intensity_losses_2D(fname, ki)
 
 if CUDA.functional()
-    solve!(model; fname, arch=GPU())
+    solve!(model; fname, backend=GPU())
     @test test_intensity_losses_2D(fname, ki)
 end

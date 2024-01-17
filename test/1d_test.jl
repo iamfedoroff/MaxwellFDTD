@@ -20,11 +20,11 @@ Eth = @. waveform(grid.z, model.t[end] - grid.z/C0)
 
 
 # CPU:
-smodel = solve!(model; fname, arch=CPU())
+smodel = solve!(model; fname, backend=CPU())
 @test isapprox(smodel.field.Ex, Eth; rtol=1e-2)
 
 # GPU:
 if CUDA.functional()
-    smodel = solve!(model; fname, arch=GPU())
+    smodel = solve!(model; fname, backend=GPU())
     @test isapprox(collect(smodel.field.Ex), Eth; rtol=1e-2)
 end

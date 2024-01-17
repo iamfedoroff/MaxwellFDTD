@@ -74,10 +74,9 @@ function Model(
 
     if ! isnothing(pml_box)
         @warn "Keyword argument 'pml_box' is deprecated. Use 'pml' instead."
-        pml = PML(grid, pml_box, dt)
-    else
-        pml = PML(grid, pml, dt)
+        pml = pml_box
     end
+    pml = PML(grid, pml, dt)
 
     material = MaterialStruct(material, grid, dt)
 
@@ -120,7 +119,10 @@ specify the outputs.
 - `model::Model`: Model structure with parameters of FDTD simulation.
 
 # Keywords
-- `arch::ARCH=CPU()`: Architecture (CPU or GPU) to run the simulations on.
+- `backend::Backend=CPU()`: On which backend to run the simulations: CPU() for cpu backend
+    (define '--threads' command line argument for multi-threading) and GPU() for CUDA
+    backend. To switch between single and double float precision use CPU{T}() or GPU{T}()
+    with T equal to FLoat32 or Float64.
 - `fname::String="out.hdf"`: The name of the output file.
 - `nframes::Int=nothing`: The total number of time frames at which the components of the
     field will be written to the output file.
@@ -138,7 +140,7 @@ specify the outputs.
 """
 function solve!(
     model;
-    arch=CPU(),
+    backend=CPU(), arch=nothing,
     fname="out.hdf",
     nframes=nothing,
     nstride=nothing,
@@ -148,7 +150,11 @@ function solve!(
     tfsf_box=nothing,
     viewpoints=nothing,
 )
-    model = adapt(arch, model)
+    if ! isnothing(arch)
+        @warn "Keyword argument 'arch' is deprecated. Use 'backend' instead."
+        backend = arch
+    end
+    model = adapt(backend, model)
     (; Nt, dt, t) = model
 
     out = Output(model; fname, nstride, nframes, dtout, viewpoints)
