@@ -177,6 +177,10 @@ function solve!(
                 println()
                 error("Something went wrong. I found NaN field values.")
             end
+            if any(isinf.(model.field.Ex))
+                println()
+                error("Something went wrong. I found Inf field values.")
+            end
             if CUDA.functional()
                 synchronize()
             end
