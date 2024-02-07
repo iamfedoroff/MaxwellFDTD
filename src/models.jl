@@ -130,10 +130,12 @@ specify the outputs.
     every 'nstride' time steps.
 - `dtout::Real=nothing`: The components of the field will be written to the output file
     every 'dtout' time step.
+- `components::Tuple{Symbol}=nothing`: List of field components to write to the output file.
+    If equal to 'nothing', then write all field components.
+- `viewpoints::Tuple{Tuple}=nothing`: List of viewpoints.
 - `tfsf_record::Bool=false`: If true, then write TFSF source data into a file.
 - `tfsf_fname::String=nothing`: The name of the file where to write the TFSF data.
 - `tfsf_box::Tuple=nothing`: The coordinates of the TFSF box faces.
-- `viewpoints::Tuple{Tuple}=nothing`: List of viewpoints.
 
 # Returns
 - `Model`: Updated model.
@@ -145,10 +147,11 @@ function solve!(
     nframes=nothing,
     nstride=nothing,
     dtout=nothing,
+    components=nothing,
+    viewpoints=nothing,
     tfsf_record=false,
     tfsf_fname=nothing,
     tfsf_box=nothing,
-    viewpoints=nothing,
 )
     if ! isnothing(arch)
         @warn "Keyword argument 'arch' is deprecated. Use 'backend' instead."
@@ -157,7 +160,7 @@ function solve!(
     model = adapt(backend, model)
     (; Nt, dt, t) = model
 
-    out = Output(model; fname, nstride, nframes, dtout, viewpoints)
+    out = Output(model; fname, nstride, nframes, dtout, components, viewpoints)
 
     if tfsf_record
         if isnothing(tfsf_fname)

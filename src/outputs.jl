@@ -1,10 +1,11 @@
-mutable struct Output{S, R, I, A1, A2}
+mutable struct Output{S, R, C, I, A1, A2}
     fname :: S
     # Fields data:
     isfields :: Bool
     itout :: Int
     Ntout :: Int
     tout :: R
+    components :: C
     # View points data:
     isviewpoints :: Bool
     ipts :: I   # coordinates of the view points
@@ -36,7 +37,7 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    viewpoints=nothing,
+    components=nothing, viewpoints=nothing,
 ) where F <: Field1D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
@@ -57,6 +58,20 @@ function Output(
         Ntout = length(tout)
     end
     itout = 1
+
+    if isnothing(components)
+        components = (:Hy, :Ex)
+    else
+        components = Tuple(components)
+        for comp in components
+            if comp != :Hy && comp != :Ex
+                error(
+                    "You asked to output $(comp) field component, but 1D field has only " *
+                    ":Hy and :Ex components."
+                )
+            end
+        end
+    end
 
     if isnothing(viewpoints)
         isviewpoints = false
@@ -83,8 +98,12 @@ function Output(
         if isfields
             group = HDF5.create_group(fp, "fields")
             group["t"] = collect(tout)
-            HDF5.create_dataset(group, "Hy", T, (Nz, Ntout))
-            HDF5.create_dataset(group, "Ex", T, (Nz, Ntout))
+            if :Hy in components
+                HDF5.create_dataset(group, "Hy", T, (Nz, Ntout))
+            end
+            if :Ex in components
+                HDF5.create_dataset(group, "Ex", T, (Nz, Ntout))
+            end
             if isplasma
                 HDF5.create_dataset(group, "rho", T, (Nz, Ntout))
             end
@@ -106,20 +125,26 @@ function Output(
     Sa = zero(Ex)
     any(geometry) ? E2 = zero(Ex) : E2 = nothing
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, E2)
+    return Output(
+        fname, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa, E2,
+    )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field1D
-    (; fname, isfields, itout) = out
+    (; fname, isfields, itout, components) = out
     (; field, material) = model
     (; Hy, Ex) = field
     (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
-            group["Hy"][:,itout] = collect(Hy)
-            group["Ex"][:,itout] = collect(Ex)
+            if :Hy in components
+                group["Hy"][:,itout] = collect(Hy)
+            end
+            if :Ex in components
+                group["Ex"][:,itout] = collect(Ex)
+            end
             if isplasma
                 group["rho"][:,itout] = collect(rho) * rho0
             end
@@ -168,7 +193,7 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    viewpoints=nothing,
+    components=nothing, viewpoints=nothing,
 ) where F <: Field2D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
@@ -189,6 +214,20 @@ function Output(
         Ntout = length(tout)
     end
     itout = 1
+
+    if isnothing(components)
+        components = (:Hy, :Ex, :Ez)
+    else
+        components = Tuple(components)
+        for comp in components
+            if comp != :Hy && comp != :Ex && comp != :Ez
+                error(
+                    "You asked to output $(comp) field component, but 2D field has only " *
+                    ":Hy, :Ex, and :Ez components."
+                )
+            end
+        end
+    end
 
     if isnothing(viewpoints)
         isviewpoints = false
@@ -217,9 +256,15 @@ function Output(
         if isfields
             group = HDF5.create_group(fp, "fields")
             group["t"] = collect(tout)
-            HDF5.create_dataset(group, "Hy", T, (Nx, Nz, Ntout))
-            HDF5.create_dataset(group, "Ex", T, (Nx, Nz, Ntout))
-            HDF5.create_dataset(group, "Ez", T, (Nx, Nz, Ntout))
+            if :Hy in components
+                HDF5.create_dataset(group, "Hy", T, (Nx, Nz, Ntout))
+            end
+            if :Ex in components
+                HDF5.create_dataset(group, "Ex", T, (Nx, Nz, Ntout))
+            end
+            if :Ez in components
+                HDF5.create_dataset(group, "Ez", T, (Nx, Nz, Ntout))
+            end
             if isplasma
                 HDF5.create_dataset(group, "rho", T, (Nx, Nz, Ntout))
             end
@@ -242,21 +287,29 @@ function Output(
     Sa = zero(Ex)
     any(geometry) ? E2 = zero(Ex) : E2 = nothing
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, E2)
+    return Output(
+        fname, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa, E2,
+    )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field2D
-    (; fname, isfields, itout) = out
+    (; fname, isfields, itout, components) = out
     (; field, material) = model
     (; Hy, Ex, Ez) = field
     (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
-            group["Hy"][:,:,itout] = collect(Hy)
-            group["Ex"][:,:,itout] = collect(Ex)
-            group["Ez"][:,:,itout] = collect(Ez)
+            if :Hy in components
+                group["Hy"][:,:,itout] = collect(Hy)
+            end
+            if :Ex in components
+                group["Ex"][:,:,itout] = collect(Ex)
+            end
+            if :Ez in components
+                group["Ez"][:,:,itout] = collect(Ez)
+            end
             if isplasma
                 group["rho"][:,:,itout] = collect(rho) * rho0
             end
@@ -306,7 +359,7 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    viewpoints=nothing,
+    components=nothing, viewpoints=nothing,
 ) where F <: Field3D
     (; field, material, Nt, t) = model
     (; grid, Ex) = field
@@ -327,6 +380,21 @@ function Output(
         Ntout = length(tout)
     end
     itout = 1
+
+    if isnothing(components)
+        components = (:Hx, :Hy, :Hz, :Ex, :Ey, :Ez)
+    else
+        components = Tuple(components)
+        for comp in components
+            if comp != :Hx && comp != :Hy && comp != :Hz &&
+               comp != :Ex && comp != :Ey && comp != :Ez
+                error(
+                    "You asked to output $(comp) field component, but 3D field has only " *
+                    ":Hx, :Hy, :Hz, :Ex, :Ey, and :Ez components."
+                )
+            end
+        end
+    end
 
     if isnothing(viewpoints)
         isviewpoints = false
@@ -357,12 +425,24 @@ function Output(
         if isfields
             group = HDF5.create_group(fp, "fields")
             group["t"] = collect(tout)
-            HDF5.create_dataset(group, "Hx", T, (Nx, Ny, Nz, Ntout))
-            HDF5.create_dataset(group, "Hy", T, (Nx, Ny, Nz, Ntout))
-            HDF5.create_dataset(group, "Hz", T, (Nx, Ny, Nz, Ntout))
-            HDF5.create_dataset(group, "Ex", T, (Nx, Ny, Nz, Ntout))
-            HDF5.create_dataset(group, "Ey", T, (Nx, Ny, Nz, Ntout))
-            HDF5.create_dataset(group, "Ez", T, (Nx, Ny, Nz, Ntout))
+            if :Hx in components
+                HDF5.create_dataset(group, "Hx", T, (Nx, Ny, Nz, Ntout))
+            end
+            if :Hy in components
+                HDF5.create_dataset(group, "Hy", T, (Nx, Ny, Nz, Ntout))
+            end
+            if :Hz in components
+                HDF5.create_dataset(group, "Hz", T, (Nx, Ny, Nz, Ntout))
+            end
+            if :Ex in components
+                HDF5.create_dataset(group, "Ex", T, (Nx, Ny, Nz, Ntout))
+            end
+            if :Ey in components
+                HDF5.create_dataset(group, "Ey", T, (Nx, Ny, Nz, Ntout))
+            end
+            if :Ez in components
+                HDF5.create_dataset(group, "Ez", T, (Nx, Ny, Nz, Ntout))
+            end
             if isplasma
                 HDF5.create_dataset(group, "rho", T, (Nx, Ny, Nz, Ntout))
             end
@@ -388,24 +468,38 @@ function Output(
     Sa = zero(Ex)
     any(geometry) ? E2 = zero(Ex) : E2 = nothing
 
-    return Output(fname, isfields, itout, Ntout, tout, isviewpoints, ipts, Sa, E2)
+    return Output(
+        fname, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa, E2,
+    )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field3D
-    (; fname, isfields, itout) = out
+    (; fname, isfields, itout, components) = out
     (; field, material) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
-            group["Hx"][:,:,:,itout] = collect(Hx)
-            group["Hy"][:,:,:,itout] = collect(Hy)
-            group["Hz"][:,:,:,itout] = collect(Hz)
-            group["Ex"][:,:,:,itout] = collect(Ex)
-            group["Ey"][:,:,:,itout] = collect(Ey)
-            group["Ez"][:,:,:,itout] = collect(Ez)
+            if :Hx in components
+                group["Hx"][:,:,:,itout] = collect(Hx)
+            end
+            if :Hy in components
+                group["Hy"][:,:,:,itout] = collect(Hy)
+            end
+            if :Hz in components
+                group["Hz"][:,:,:,itout] = collect(Hz)
+            end
+            if :Ex in components
+                group["Ex"][:,:,:,itout] = collect(Ex)
+            end
+            if :Ey in components
+                group["Ey"][:,:,:,itout] = collect(Ey)
+            end
+            if :Ez in components
+                group["Ez"][:,:,:,itout] = collect(Ez)
+            end
             if isplasma
                 group["rho"][:,:,:,itout] = collect(rho) * rho0
             end
