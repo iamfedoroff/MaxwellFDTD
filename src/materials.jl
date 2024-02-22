@@ -44,6 +44,39 @@ function Material(;
 end
 
 
+function geometry2bool(geometry, grid::Grid1D)
+    (; Nz, z) = grid
+    if typeof(geometry) <: Function
+        geometry = [Bool(geometry(z[iz])) for iz=1:Nz]
+    else
+        geometry = [Bool(geometry[iz]) for iz=1:Nz]
+    end
+    return geometry
+end
+
+
+function geometry2bool(geometry, grid::Grid2D)
+    (; Nx, Nz, x, z) = grid
+    if typeof(geometry) <: Function
+        geometry = [Bool(geometry(x[ix],z[iz])) for ix=1:Nx, iz=1:Nz]
+    else
+        geometry = [Bool(geometry[ix,iz]) for ix=1:Nx, iz=1:Nz]
+    end
+    return geometry
+end
+
+
+function geometry2bool(geometry, grid::Grid3D)
+    (; Nx, Ny, Nz, x, y, z) = grid
+    if typeof(geometry) <: Function
+        geometry = [Bool(geometry(x[ix],y[iy],z[iz])) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    else
+        geometry = [Bool(geometry[ix,iy,iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
+    end
+    return geometry
+end
+
+
 # ******************************************************************************************
 struct Plasma{T, F}
     ionrate :: F
@@ -72,8 +105,7 @@ end
 # ******************************************************************************************
 # Materials
 # ******************************************************************************************
-struct MaterialStruct1D{G, T, V, A, B, F}
-    geometry :: G
+struct MaterialStruct1D{T, V, A, B, F}
     sigma :: T   # conductivity
     # Update coefficients for H, E and D fields:
     Mh :: T
@@ -114,17 +146,8 @@ end
 
 
 function MaterialStruct(material, grid::Grid1D, dt)
-    if isnothing(material)
-        material = Material(geometry = z -> false)
-    end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma) = material
-    (; Nz, z) = grid
-
-    if typeof(geometry) <: Function
-        geometry = [Bool(geometry(z[iz])) for iz=1:Nz]
-    else
-        geometry = [Bool(geometry[iz]) for iz=1:Nz]
-    end
+    (; eps, mu, sigma, chi, chi2, chi3, plasma) = material
+    (; Nz) = grid
 
     sigma = Float64(sigma)
     sigmaD = sigma / (EPS0*eps)   # J=sigma*E -> J=sigmaD*D
@@ -199,16 +222,15 @@ function MaterialStruct(material, grid::Grid1D, dt)
     end
 
     return MaterialStruct1D(
-        geometry, sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2,
-        iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp, Ppx,
-        oldPpx1, oldPpx2, Ma, Pax,
+        sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, iskerr, Mk2,
+        Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1,
+        oldPpx2, Ma, Pax,
     )
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct MaterialStruct2D{G, T, V, A, B, F}
-    geometry :: G
+struct MaterialStruct2D{T, V, A, B, F}
     sigma :: T   # conductivity
     # Update coefficients for H, E and D fields:
     Mh :: T
@@ -256,17 +278,8 @@ end
 
 
 function MaterialStruct(material, grid::Grid2D, dt)
-    if isnothing(material)
-        material = Material(geometry = (x,z) -> false)
-    end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma) = material
-    (; Nx, Nz, x, z) = grid
-
-    if typeof(geometry) <: Function
-        geometry = [Bool(geometry(x[ix],z[iz])) for ix=1:Nx, iz=1:Nz]
-    else
-        geometry = [Bool(geometry[ix,iz]) for ix=1:Nx, iz=1:Nz]
-    end
+    (; eps, mu, sigma, chi, chi2, chi3, plasma) = material
+    (; Nx, Nz) = grid
 
     sigma = Float64(sigma)
     sigmaD = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
@@ -344,16 +357,15 @@ function MaterialStruct(material, grid::Grid2D, dt)
     end
 
     return MaterialStruct2D(
-        geometry, sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz,
-        oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap,
-        Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
+        sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Pz, oldPz1,
+        oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0, rho, drho, Ap, Bp, Cp,
+        Ppx, oldPpx1, oldPpx2, Ppz, oldPpz1, oldPpz2, Ma, Pax, Paz,
     )
 end
 
 
 # ------------------------------------------------------------------------------------------
-struct MaterialStruct3D{G, T, V, A, B, F}
-    geometry :: G
+struct MaterialStruct3D{T, V, A, B, F}
     sigma :: T   # conductivity
     # Update coefficients for H, E and D fields:
     Mh :: T
@@ -408,17 +420,8 @@ end
 
 
 function MaterialStruct(material, grid::Grid3D, dt)
-    if isnothing(material)
-        material = Material(geometry = (x,y,z) -> false)
-    end
-    (; geometry, eps, mu, sigma, chi, chi2, chi3, plasma) = material
-    (; Nx, Ny, Nz, x, y, z) = grid
-
-    if typeof(geometry) <: Function
-        geometry = [Bool(geometry(x[ix],y[iy],z[iz])) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    else
-        geometry = [Bool(geometry[ix,iy,iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
-    end
+    (; eps, mu, sigma, chi, chi2, chi3, plasma) = material
+    (; Nx, Ny, Nz) = grid
 
     sigma = Float64(sigma)
     sigmaD = sigma / (EPS0*eps)   # J=sigma*E -> J=sigma*D
@@ -505,10 +508,10 @@ function MaterialStruct(material, grid::Grid3D, dt)
     end
 
     return MaterialStruct3D(
-        geometry, sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py,
-        oldPy1, oldPy2, Pz, oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi,
-        rho0, rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz,
-        oldPpz1, oldPpz2, Ma, Pax, Pay, Paz,
+        sigma, Mh, Me, Md1, Md2, isdispersion, Aq, Bq, Cq, Px, oldPx1, oldPx2, Py, oldPy1,
+        oldPy2, Pz, oldPz1, oldPz2, iskerr, Mk2, Mk3, isplasma, ionrate, Rava, ksi, rho0,
+        rho, drho, Ap, Bp, Cp, Ppx, oldPpx1, oldPpx2, Ppy, oldPpy1, oldPpy2, Ppz, oldPpz1,
+        oldPpz2, Ma, Pax, Pay, Paz,
     )
 end
 

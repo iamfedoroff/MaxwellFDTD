@@ -1,5 +1,6 @@
 mutable struct Output{S, R, C, I, A1, A2}
     fname :: S
+    isgeometry :: Bool
     # Fields data:
     isfields :: Bool
     itout :: Int
@@ -16,16 +17,17 @@ end
 
 
 function write_output_variables(out, model)
-    (; material) = model
-    (; geometry, isplasma, rho, rho0) = material
-    (; fname, Sa, E2) = out
+    (; materials) = model
+    (; isgeometry, fname, Sa, E2) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Sa"] = collect(Sa)   # averaged poynting vector
-        if any(geometry)
+        if isgeometry
             fp["E2"] = collect(E2)   # averaged E^2
-        end
-        if isplasma
-            fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
+
+            (; isplasma, rho, rho0) = materials[1]
+            if isplasma
+                fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
+            end
         end
     end
     return nothing
@@ -39,10 +41,16 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, viewpoints=nothing,
 ) where F <: Field1D
-    (; field, material, Nt, t) = model
+    (; field, geometry, materials, Nt, t) = model
     (; grid, Ex) = field
-    (; geometry, isplasma) = material
     (; Nz, z) = grid
+
+    isgeometry = any(x -> x > 0, geometry)
+
+    isplasma = any([material.isplasma for material in materials])
+    if isplasma && length(materials) > 1
+        @warn "The electron density is written only for the first material!"
+    end
 
     if !isdir(dirname(fname))
         mkpath(dirname(fname))
@@ -92,7 +100,7 @@ function Output(
 
     HDF5.h5open(fname, "w") do fp
         fp["z"] = collect(z)
-        if any(geometry)
+        if isgeometry
             fp["geometry"] = collect(geometry)
         end
         if isfields
@@ -123,19 +131,19 @@ function Output(
     end
 
     Sa = zero(Ex)
-    any(geometry) ? E2 = zero(Ex) : E2 = nothing
+    E2 = isgeometry ? zero(Ex) : nothing
 
     return Output(
-        fname, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa, E2,
+        fname, isgeometry, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa,
+        E2,
     )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field1D
-    (; fname, isfields, itout, components) = out
-    (; field, material) = model
+    (; fname, isgeometry, isfields, itout, components) = out
+    (; field, materials) = model
     (; Hy, Ex) = field
-    (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
@@ -145,8 +153,11 @@ function write_fields(out, model::Model{F}) where F <: Field1D
             if :Ex in components
                 group["Ex"][:,itout] = collect(Ex)
             end
-            if isplasma
-                group["rho"][:,itout] = collect(rho) * rho0
+            if isgeometry
+                (; isplasma, rho, rho0) = materials[1]
+                if isplasma
+                    group["rho"][:,itout] = collect(rho) * rho0
+                end
             end
         end
     end
@@ -155,18 +166,20 @@ end
 
 
 function write_viewpoints(out, model::Model{F}, it) where F <: Field1D
-    (; fname, isviewpoints, ipts) = out
-    (; field, material) = model
+    (; fname, isgeometry, isviewpoints, ipts) = out
+    (; field, materials) = model
     (; Hy, Ex) = field
-    (; isplasma, rho, rho0) = material
     if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
                 group = fp["viewpoints/$n"]
                 group["Hy"][it] = collect(Hy[ipt])
                 group["Ex"][it] = collect(Ex[ipt])
-                if isplasma
-                    group["rho"][it] = collect(rho[ipt]) * rho0
+                if isgeometry
+                    (; isplasma, rho, rho0) = materials[1]
+                    if isplasma
+                        group["rho"][it] = collect(rho[ipt]) * rho0
+                    end
                 end
             end
         end
@@ -176,12 +189,11 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field1D
-    (; Sa, E2) = out
-    (; field, material, dt) = model
+    (; isgeometry, Sa, E2) = out
+    (; field, dt) = model
     (; Hy, Ex) = field
-    (; geometry) = material
     @. Sa += sqrt((Ex*Hy)^2) * dt   # averaged poynting vector
-    if any(geometry)
+    if isgeometry
         @. E2 += Ex^2 * dt   # averaged E^2
     end
     return nothing
@@ -195,10 +207,16 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, viewpoints=nothing,
 ) where F <: Field2D
-    (; field, material, Nt, t) = model
+    (; field, geometry, materials, Nt, t) = model
     (; grid, Ex) = field
-    (; geometry, isplasma) = material
     (; Nx, Nz, x, z) = grid
+
+    isgeometry = any(x -> x > 0, geometry)
+
+    isplasma = any([material.isplasma for material in materials])
+    if isplasma && length(materials) > 1
+        @warn "The electron density is written only for the first material!"
+    end
 
     if !isdir(dirname(fname))
         mkpath(dirname(fname))
@@ -250,7 +268,7 @@ function Output(
     HDF5.h5open(fname, "w") do fp
         fp["x"] = collect(x)
         fp["z"] = collect(z)
-        if any(geometry)
+        if isgeometry
             fp["geometry"] = collect(geometry)
         end
         if isfields
@@ -285,19 +303,19 @@ function Output(
     end
 
     Sa = zero(Ex)
-    any(geometry) ? E2 = zero(Ex) : E2 = nothing
+    E2 = isgeometry ? zero(Ex) : nothing
 
     return Output(
-        fname, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa, E2,
+        fname, isgeometry, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa,
+        E2,
     )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field2D
-    (; fname, isfields, itout, components) = out
-    (; field, material) = model
+    (; fname, isgeometry, isfields, itout, components) = out
+    (; field, materials) = model
     (; Hy, Ex, Ez) = field
-    (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
@@ -310,8 +328,11 @@ function write_fields(out, model::Model{F}) where F <: Field2D
             if :Ez in components
                 group["Ez"][:,:,itout] = collect(Ez)
             end
-            if isplasma
-                group["rho"][:,:,itout] = collect(rho) * rho0
+            if isgeometry
+                (; isplasma, rho, rho0) = materials[1]
+                if isplasma
+                    group["rho"][:,:,itout] = collect(rho) * rho0
+                end
             end
         end
     end
@@ -320,10 +341,9 @@ end
 
 
 function write_viewpoints(out, model::Model{F}, it) where F <: Field2D
-    (; fname, isviewpoints, ipts) = out
-    (; field, material) = model
+    (; fname, isgeometry, isviewpoints, ipts) = out
+    (; field, materials) = model
     (; Hy, Ex, Ez) = field
-    (; isplasma, rho, rho0) = material
     if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
@@ -331,8 +351,11 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field2D
                 group["Hy"][it] = collect(Hy[ipt])
                 group["Ex"][it] = collect(Ex[ipt])
                 group["Ez"][it] = collect(Ez[ipt])
-                if isplasma
-                    group["rho"][it] = collect(rho[ipt]) * rho0
+                if isgeometry
+                    (; isplasma, rho, rho0) = materials[1]
+                    if isplasma
+                        group["rho"][it] = collect(rho[ipt]) * rho0
+                    end
                 end
             end
         end
@@ -342,12 +365,11 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field2D
-    (; Sa, E2) = out
-    (; field, material, dt) = model
+    (; isgeometry, Sa, E2) = out
+    (; field, dt) = model
     (; Hy, Ex, Ez) = field
-    (; geometry) = material
     @. Sa += sqrt((-Ez*Hy)^2 + (Ex*Hy)^2) * dt   # averaged poynting vector
-    if any(geometry)
+    if isgeometry
         @. E2 += (Ex^2 + Ez^2) * dt   # average E^2
     end
     return nothing
@@ -361,10 +383,16 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, viewpoints=nothing,
 ) where F <: Field3D
-    (; field, material, Nt, t) = model
+    (; field, geometry, materials, Nt, t) = model
     (; grid, Ex) = field
-    (; geometry, isplasma) = material
     (; Nx, Ny, Nz, x, y, z) = grid
+
+    isgeometry = any(x -> x > 0, geometry)
+
+    isplasma = any([material.isplasma for material in materials])
+    if isplasma && length(materials) > 1
+        @warn "The electron density is written only for the first material!"
+    end
 
     if !isdir(dirname(fname))
         mkpath(dirname(fname))
@@ -419,7 +447,7 @@ function Output(
         fp["x"] = collect(x)
         fp["y"] = collect(y)
         fp["z"] = collect(z)
-        if any(geometry)
+        if isgeometry
             fp["geometry"] = collect(geometry)
         end
         if isfields
@@ -466,19 +494,19 @@ function Output(
     end
 
     Sa = zero(Ex)
-    any(geometry) ? E2 = zero(Ex) : E2 = nothing
+    E2 = isgeometry ? zero(Ex) : nothing
 
     return Output(
-        fname, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa, E2,
+        fname, isgeometry, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa,
+        E2,
     )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field3D
-    (; fname, isfields, itout, components) = out
-    (; field, material) = model
+    (; fname, isgeometry, isfields, itout, components) = out
+    (; field, materials) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; isplasma, rho, rho0) = material
     if isfields
         HDF5.h5open(fname, "r+") do fp
             group = fp["fields"]
@@ -500,8 +528,11 @@ function write_fields(out, model::Model{F}) where F <: Field3D
             if :Ez in components
                 group["Ez"][:,:,:,itout] = collect(Ez)
             end
-            if isplasma
-                group["rho"][:,:,:,itout] = collect(rho) * rho0
+            if isgeometry
+                (; isplasma, rho, rho0) = materials[1]
+                if isplasma
+                    group["rho"][:,:,:,itout] = collect(rho) * rho0
+                end
             end
         end
     end
@@ -510,10 +541,9 @@ end
 
 
 function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
-    (; fname, isviewpoints, ipts) = out
-    (; field, material) = model
+    (; fname, isgeometry, isviewpoints, ipts) = out
+    (; field, materials) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; isplasma, rho, rho0) = material
     if isviewpoints
         HDF5.h5open(fname, "r+") do fp
             for (n, ipt) in enumerate(ipts)
@@ -524,8 +554,11 @@ function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
                 group["Ex"][it] = collect(Ex[ipt])
                 group["Ey"][it] = collect(Ey[ipt])
                 group["Ez"][it] = collect(Ez[ipt])
-                if isplasma
-                    group["rho"][it] = collect(rho[ipt]) * rho0
+                if isgeometry
+                    (; isplasma, rho, rho0) = materials[1]
+                    if isplasma
+                        group["rho"][it] = collect(rho[ipt]) * rho0
+                    end
                 end
             end
         end
@@ -535,13 +568,12 @@ end
 
 
 function calculate_output_variables!(out, model::Model{F}) where F <: Field3D
-    (; Sa, E2) = out
-    (; field, material, dt) = model
+    (; isgeometry, Sa, E2) = out
+    (; field, dt) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    (; geometry) = material
     # averaged poynting vector:
     @. Sa += sqrt((Ey*Hz - Ez*Hy)^2 + (Ez*Hx - Ex*Hz)^2 + (Ex*Hy - Ey*Hx)^2) * dt
-    if any(geometry)
+    if isgeometry
         @. E2 += (Ex^2 + Ey^2 + Ez^2) * dt   # averaged E^2
     end
     return nothing

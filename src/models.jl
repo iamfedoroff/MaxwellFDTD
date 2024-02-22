@@ -1,9 +1,10 @@
-struct Model{F, S, B, P, M, T, R}
+struct Model{F, S, B, P, G, M, T, R}
     field :: F
     sources :: S
     bcs :: B
     pml :: P
-    material :: M
+    geometry :: G
+    materials :: M
     # Time grid:
     Nt :: Int
     dt :: T
@@ -47,8 +48,9 @@ The model contains all data necessary to run FDTD simulaton.
     along x and 2um thick ones along z. The zero value corresponds to the absence of PML
     layer. Additionally, instead of each real value representing the PML layer thickness,
     you can pass a CPML structure to fine-tune the PML parameters.
-- `material::Material=nothing`: Structure with material properties. If not provided, then
-    FDTD simulation is performed in free space.
+- `material::Union{Material,Tuple}=nothing`: Material structure for a single material or a
+    tuple with Material structures for multiple materials. If not provided, then FDTD
+    simulation is performed in free space.
 """
 function Model(
     grid, source; tmax, CN=0.5, bc=:periodic, pml=0, pml_box=nothing, material=nothing,
@@ -78,7 +80,21 @@ function Model(
     end
     pml = PML(grid, pml, dt)
 
-    material = MaterialStruct(material, grid, dt)
+    geometry = zeros(Int, size(field.Ex))
+    if isnothing(material)
+        materials = (Material(; geometry),)
+    else
+        materials = material isa Material ? (material,) : Tuple(material)
+    end
+    for (imat, material) in enumerate(materials)
+        mgeom = geometry2bool(material.geometry, grid)
+        for i in eachindex(geometry)
+            if mgeom[i]
+                geometry[i] = imat
+            end
+        end
+    end
+    materials = Tuple([MaterialStruct(material, grid, dt) for material in materials])
 
     # Compensation for the numerical dispersion:
     # dt = t[2] - t[1]
@@ -95,7 +111,7 @@ function Model(
     Md1 = 1.0
     Md2 = dt
 
-    return Model(field, sources, bcs, pml, material, Nt, dt, t, Mh, Me, Md1, Md2)
+    return Model(field, sources, bcs, pml, geometry, materials, Nt, dt, t, Mh, Me, Md1, Md2)
 end
 
 
@@ -222,18 +238,17 @@ end
 # 1D: d/dx = d/dy = 0,   (Hy, Ex)
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field1D
-    (; field, bcs, pml, material) = model
+    (; field, bcs, pml, geometry, materials) = model
     (; grid, Hy, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiExz1, zlayer2, psiExz2) = pml
-    (; geometry) = material
 
     iz = @index(Global)
 
     @inbounds begin
-        isgeometry = geometry[iz]
-
+        isgeometry = geometry[iz] > 0
         if isgeometry
+            material = get_material(materials, geometry[iz])
             (; Mh) = material   # Mh=dt/(MU0*mu)
         else
             (; Mh) = model   # Mh=dt/MU0
@@ -285,23 +300,23 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
-    (; field, bcs, pml, material, dt) = model
+    (; field, bcs, pml, geometry, materials, dt) = model
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; geometry, isdispersion, iskerr, isplasma) = material
 
     iz = @index(Global)
 
     @inbounds begin
-        isgeometry = geometry[iz]
-
+        isgeometry = geometry[iz] > 0
         if isgeometry
+            material = get_material(materials, geometry[iz])
+            (; isdispersion, iskerr, isplasma, Me, Md1, Md2) = material
             # Me=1/(EPS0*eps), Md1=(1-sigma*dt/2)/(1+sigma*dt/2), Md2=dt/(1+sigma*dt/2)
-            (; Me, Md1, Md2) = material
         else
-            # Me=1/EPS0, Md1=1, Md2=dt
+            isdispersion = iskerr = isplasma = false
             (; Me, Md1, Md2) = model
+            # Me=1/EPS0, Md1=1, Md2=dt
         end
 
         # derivatives H ....................................................................
@@ -420,18 +435,17 @@ end
 # 2D
 # ******************************************************************************************
 @kernel function update_H_kernel!(model::Model{F}) where F <: Field2D
-    (; field, bcs, pml, material) = model
+    (; field, bcs, pml, geometry, materials) = model
     (; grid, Hy, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiEzx1, xlayer2, psiEzx2, zlayer1, psiExz1, zlayer2, psiExz2) = pml
-    (; geometry) = material
 
     ix, iz = @index(Global, NTuple)
 
     @inbounds begin
-        isgeometry = geometry[ix,iz]
-
+        isgeometry = geometry[ix,iz] > 0
         if isgeometry
+            material = get_material(materials, geometry[ix,iz])
             (; Mh) = material   # Mh=dt/(MU0*mu)
         else
             (; Mh) = model   # Mh=dt/MU0
@@ -510,23 +524,23 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
-    (; field, bcs, pml, material, dt) = model
+    (; field, bcs, pml, geometry, materials, dt) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
-    (; geometry, isdispersion, iskerr, isplasma) = material
 
     ix, iz = @index(Global, NTuple)
 
     @inbounds begin
-        isgeometry = geometry[ix,iz]
-
+        isgeometry = geometry[ix,iz] > 0
         if isgeometry
+            material = get_material(materials, geometry[ix,iz])
+            (; isdispersion, iskerr, isplasma, Me, Md1, Md2) = material
             # Me=1/(EPS0*eps), Md1=(1-sigma*dt/2)/(1+sigma*dt/2), Md2=dt/(1+sigma*dt/2)
-            (; Me, Md1, Md2) = material
         else
-            # Me=1/EPS0, Md1=1, Md2=dt
+            isdispersion = iskerr = isplasma = false
             (; Me, Md1, Md2) = model
+            # Me=1/EPS0, Md1=1, Md2=dt
         end
 
         # derivatives H ....................................................................
@@ -699,20 +713,19 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_H_kernel!(field::Field3D, bcs, pml, material, Mh0)
+@kernel function update_H_kernel!(field::Field3D, bcs, pml, geometry, materials, Mh0)
     (; grid, Hx, Hy, Hz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiEyx1, psiEzx1, xlayer2, psiEyx2, psiEzx2,
        ylayer1, psiExy1, psiEzy1, ylayer2, psiExy2, psiEzy2,
        zlayer1, psiExz1, psiEyz1, zlayer2, psiExz2, psiEyz2) = pml
-    (; geometry) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
     @inbounds begin
-        isgeometry = geometry[ix,iy,iz]
-
+        isgeometry = geometry[ix,iy,iz] > 0
         if isgeometry
+            material = get_material(materials, geometry[ix,iy,iz])
             (; Mh) = material   # Mh=dt/(MU0*mu)
         else
             Mh = Mh0   # Mh=dt/MU0
@@ -851,8 +864,8 @@ function update_H!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, bcs, pml, material, Mh) = model
-    update_H_kernel!(backend)(field, bcs, pml, material, Mh; ndrange)
+    (; field, bcs, pml, geometry, materials, Mh) = model
+    update_H_kernel!(backend)(field, bcs, pml, geometry, materials, Mh; ndrange)
     return nothing
 end
 
@@ -860,25 +873,27 @@ end
 # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-@kernel function update_E_kernel!(field::Field3D, bcs, pml, material, dt, Me0, Md10, Md20)
+@kernel function update_E_kernel!(
+    field::Field3D, bcs, pml, geometry, materials, dt, Me0, Md10, Md20,
+)
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
     (; xlayer1, psiHyx1, psiHzx1, xlayer2, psiHyx2, psiHzx2,
        ylayer1, psiHxy1, psiHzy1, ylayer2, psiHxy2, psiHzy2,
        zlayer1, psiHxz1, psiHyz1, zlayer2, psiHxz2, psiHyz2) = pml
-    (; geometry, isdispersion, iskerr, isplasma) = material
 
     ix, iy, iz = @index(Global, NTuple)
 
     @inbounds begin
-        isgeometry = geometry[ix,iy,iz]
-
+        isgeometry = geometry[ix,iy,iz] > 0
         if isgeometry
+            material = get_material(materials, geometry[ix,iy,iz])
+            (; isdispersion, iskerr, isplasma, Me, Md1, Md2) = material
             # Me=1/(EPS0*eps), Md1=(1-sigma*dt/2)/(1+sigma*dt/2), Md2=dt/(1+sigma*dt/2)
-            (; Me, Md1, Md2) = material
         else
-            # Me=1/EPS0, Md1=1, Md2=dt
+            isdispersion = iskerr = isplasma = false
             Me, Md1, Md2 = Me0, Md10, Md20
+            # Me=1/EPS0, Md1=1, Md2=dt
         end
 
         # derivatives H ....................................................................
@@ -1126,8 +1141,10 @@ function update_E!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, bcs, pml, material, dt, Me, Md1, Md2) = model
-    update_E_kernel!(backend)(field, bcs, pml, material, dt, Me, Md1, Md2; ndrange)
+    (; field, bcs, pml, geometry, materials, dt, Me, Md1, Md2) = model
+    update_E_kernel!(backend)(
+        field, bcs, pml, geometry, materials, dt, Me, Md1, Md2; ndrange,
+    )
     return nothing
 end
 
@@ -1196,3 +1213,11 @@ end
 isperiodic(bc) = bc == 1
 isdirichlet(bc) = bc == 2
 isneumann(bc) = bc == 3
+
+
+# https://discourse.julialang.org/t/access-a-tuple-of-structs-using-the-values-of-an-integer-array/
+case_expr(idx, n) = idx == n ? :(materials[$idx]) :
+                    :(i == $idx ? materials[$idx] : $(case_expr(idx+1, n)))
+@generated function get_material(materials, i)
+    return case_expr(1, fieldcount(materials))
+end
