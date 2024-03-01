@@ -1,6 +1,6 @@
 struct PMLData{T}
     thickness :: T
-    kappa :: T
+    kmax :: T
     alpha :: T
     R0 :: T
     m :: Int
@@ -8,7 +8,7 @@ end
 
 
 """
-CPML(; thickness, kappa=1, alpha=10e-6, R0=10e-6, m=3)
+CPML(; thickness, kmax=1, alpha=10e-6, R0=10e-6, m=3)
 
 Convolutional perfectly matched layer with the stretching parameter
 
@@ -16,7 +16,7 @@ Convolutional perfectly matched layer with the stretching parameter
 
 where
 
-    sigma = sigma_max * (x/L)^m
+    kappa = 1 + (kmax-1) (x/L)^m,    sigma = sigma_max * (x/L)^m
 
 with
 
@@ -28,15 +28,15 @@ impedance of free space.
 
 # Keywords
 - `thickness::Real`: Thickness L of the PML layer.
-- `kappa::Real=1`: kappa parameter.
+- `kmax::Real=1`: maximum value of kappa parameter.
 - `alpha::Real=10e-6`: alpha parameter.
 - `R0::Real=10e-6`: The theoretical reflection coefficient R0 of the PML layer at normal
     incidence
 - `m::Int=3`: The power of the losses profile.
 """
-function CPML(; thickness, kappa=1, alpha=10e-6, R0=10e-6, m=3)
-    thickness, kappa, alpha, R0 = promote(thickness, kappa, alpha, R0)
-    return PMLData(thickness, kappa, alpha, R0, m)
+function CPML(; thickness, kmax=1, alpha=10e-6, R0=10e-6, m=3)
+    thickness, kmax, alpha, R0 = promote(thickness, kmax, alpha, R0)
+    return PMLData(thickness, kmax, alpha, R0, m)
 end
 
 
@@ -53,7 +53,7 @@ end
 @adapt_structure PMLLayer
 
 
-function LeftPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
+function LeftPMLLayer(x, Lx, dt; kmax=1, alpha=10e-6, R0=10e-6, m=3)
     if Lx == 0
         ixb = 1
         K = ones(1)
@@ -73,7 +73,13 @@ function LeftPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
             sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
         end
 
-        K = ones(Nxpml) * kappa
+        kappa = zeros(Nxpml)
+        for ix=1:Nxpml
+            ixpml = ix
+            kappa[ixpml] = 1 + (kmax - 1) * (abs(x[ix] - xb) / Lx)^m
+        end
+
+        K = kappa
         B = @. exp(-(sigma / K + alpha) * dt / EPS0)
         A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     end
@@ -81,7 +87,7 @@ function LeftPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
 end
 
 
-function RightPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
+function RightPMLLayer(x, Lx, dt; kmax=1, alpha=10e-6, R0=10e-6, m=3)
     if Lx == 0
         ixb = length(x)
         K = ones(1)
@@ -102,7 +108,13 @@ function RightPMLLayer(x, Lx, dt; kappa=1, alpha=10e-6, R0=10e-6, m=3)
             sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
         end
 
-        K = ones(Nxpml) * kappa
+        kappa = zeros(Nxpml)
+        for ix=ixb:Nx
+            ixpml = ix - ixb + 1
+            kappa[ixpml] = 1 + (kmax - 1) * (abs(x[ix] - xb) / Lx)^m
+        end
+
+        K = kappa
         B = @. exp(-(sigma / K + alpha) * dt / EPS0)
         A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     end
@@ -137,8 +149,8 @@ function PML(grid::Grid1D, pml, dt)
     end
 
     if typeof(Lz1) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lz1
-        zlayer1 = LeftPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lz1
+        zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
         zlayer1 = LeftPMLLayer(z, Lz1, dt)
     end
@@ -146,8 +158,8 @@ function PML(grid::Grid1D, pml, dt)
     psiHyz1, psiExz1 = zeros(Nzpml), zeros(Nzpml)
 
     if typeof(Lz2) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lz2
-        zlayer2 = RightPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lz2
+        zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
         zlayer2 = RightPMLLayer(z, Lz2, dt)
     end
@@ -196,8 +208,8 @@ function PML(grid::Grid2D, pml, dt)
     end
 
     if typeof(Lx1) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lx1
-        xlayer1 = LeftPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lx1
+        xlayer1 = LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
         xlayer1 = LeftPMLLayer(x, Lx1, dt)
     end
@@ -205,8 +217,8 @@ function PML(grid::Grid2D, pml, dt)
     psiHyx1, psiEzx1 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
 
     if typeof(Lx2) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lx2
-        xlayer2 = RightPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lx2
+        xlayer2 = RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
         xlayer2 = RightPMLLayer(x, Lx2, dt)
     end
@@ -214,8 +226,8 @@ function PML(grid::Grid2D, pml, dt)
     psiHyx2, psiEzx2 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
 
     if typeof(Lz1) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lz1
-        zlayer1 = LeftPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lz1
+        zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
         zlayer1 = LeftPMLLayer(z, Lz1, dt)
     end
@@ -223,8 +235,8 @@ function PML(grid::Grid2D, pml, dt)
     psiHyz1, psiExz1 = zeros(Nx,Nzpml), zeros(Nx,Nzpml)
 
     if typeof(Lz2) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lz2
-        zlayer2 = RightPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lz2
+        zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
         zlayer2 = RightPMLLayer(z, Lz2, dt)
     end
@@ -295,8 +307,8 @@ function PML(grid::Grid3D, pml, dt)
     end
 
     if typeof(Lx1) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lx1
-        xlayer1 = LeftPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lx1
+        xlayer1 = LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
         xlayer1 = LeftPMLLayer(x, Lx1, dt)
     end
@@ -304,8 +316,8 @@ function PML(grid::Grid3D, pml, dt)
     psiHyx1, psiHzx1, psiEyx1, psiEzx1 = (zeros(Nxpml,Ny,Nz) for i=1:4)
 
     if typeof(Lx2) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lx2
-        xlayer2 = RightPMLLayer(x, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lx2
+        xlayer2 = RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
         xlayer2 = RightPMLLayer(x, Lx2, dt)
     end
@@ -313,8 +325,8 @@ function PML(grid::Grid3D, pml, dt)
     psiHyx2, psiHzx2, psiEyx2, psiEzx2 = (zeros(Nxpml,Ny,Nz) for i=1:4)
 
     if typeof(Ly1) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Ly1
-        ylayer1 = LeftPMLLayer(y, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Ly1
+        ylayer1 = LeftPMLLayer(y, thickness, dt; kmax, alpha, R0, m)
     else
         ylayer1 = LeftPMLLayer(y, Ly1, dt)
     end
@@ -322,8 +334,8 @@ function PML(grid::Grid3D, pml, dt)
     psiHxy1, psiHzy1, psiExy1, psiEzy1 = (zeros(Nx,Nypml,Nz) for i=1:4)
 
     if typeof(Ly2) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Ly2
-        ylayer2 = RightPMLLayer(y, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Ly2
+        ylayer2 = RightPMLLayer(y, thickness, dt; kmax, alpha, R0, m)
     else
         ylayer2 = RightPMLLayer(y, Ly2, dt)
     end
@@ -331,8 +343,8 @@ function PML(grid::Grid3D, pml, dt)
     psiHxy2, psiHzy2, psiExy2, psiEzy2 = (zeros(Nx,Nypml,Nz) for i=1:4)
 
     if typeof(Lz1) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lz1
-        zlayer1 = LeftPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lz1
+        zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
         zlayer1 = LeftPMLLayer(z, Lz1, dt)
     end
@@ -340,8 +352,8 @@ function PML(grid::Grid3D, pml, dt)
     psiHxz1, psiHyz1, psiExz1, psiEyz1 = (zeros(Nx,Ny,Nzpml) for i=1:4)
 
     if typeof(Lz2) <: PMLData
-        (; thickness, kappa, alpha, R0, m) = Lz2
-        zlayer2 = RightPMLLayer(z, thickness, dt; kappa, alpha, R0, m)
+        (; thickness, kmax, alpha, R0, m) = Lz2
+        zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
         zlayer2 = RightPMLLayer(z, Lz2, dt)
     end
