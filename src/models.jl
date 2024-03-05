@@ -271,16 +271,16 @@ end
         dExz = (Ex_izp1 - Ex[iz]) / dz
 
         # apply CPML .......................................................................
-        if iz <= zlayer1.ind   # z left layer [1:iz1]
+        if iz <= zlayer1.ib   # z left layer [1:ib]
             (; K, A, B) = zlayer1
             izpml = iz
             psiExz1[izpml] = B[izpml] * psiExz1[izpml] + A[izpml] * dExz
             Hy[iz] -= Mh * psiExz1[izpml]
             dExz = dExz / K[izpml]
         end
-        if iz >= zlayer2.ind   # z right layer [iz1:Nz]
-            (; ind, K, A, B) = zlayer2
-            izpml = iz - ind + 1
+        if iz >= zlayer2.ib   # z right layer [ib:Nz]
+            (; ib, K, A, B) = zlayer2
+            izpml = iz - ib + 1
             psiExz2[izpml] = B[izpml] * psiExz2[izpml] + A[izpml] * dExz
             Hy[iz] -= Mh * psiExz2[izpml]
             dExz = dExz / K[izpml]
@@ -336,16 +336,16 @@ end
         dHyz = (Hy[iz] - Hy_izm1) / dz
 
         # apply CPML .......................................................................
-        if iz <= zlayer1.ind   # z left layer [1:iz1]
+        if iz <= zlayer1.ib   # z left layer [1:ib]
             (; K, A, B) = zlayer1
             izpml = iz
             psiHyz1[izpml] = B[izpml] * psiHyz1[izpml] + A[izpml] * dHyz
             Dx[iz] -= Md2 * psiHyz1[izpml]
             dHyz = dHyz / K[izpml]
         end
-        if iz >= zlayer2.ind   # z right layer [iz1:Nz]
-            (; ind, K, A, B) = zlayer2
-            izpml = iz - ind + 1
+        if iz >= zlayer2.ib   # z right layer [ib:Nz]
+            (; ib, K, A, B) = zlayer2
+            izpml = iz - ib + 1
             psiHyz2[izpml] = B[izpml] * psiHyz2[izpml] + A[izpml] * dHyz
             Dx[iz] -= Md2 * psiHyz2[izpml]
             dHyz = dHyz / K[izpml]
@@ -481,30 +481,30 @@ end
         dEzx = (Ez_ixp1 - Ez[ix,iz]) / dx
 
         # apply CPML .......................................................................
-        if ix <= xlayer1.ind   # x left layer [1:ix1]
+        if ix <= xlayer1.ib   # x left layer [1:ib,iz]
             (; K, A, B) = xlayer1
             ixpml = ix
             psiEzx1[ixpml,iz] = B[ixpml] * psiEzx1[ixpml,iz] + A[ixpml] * dEzx
             Hy[ix,iz] += Mh * psiEzx1[ixpml,iz]
             dEzx = dEzx / K[ixpml]
         end
-        if ix >= xlayer2.ind      # x right layer [ix2:Nx]
-            (; ind, K, A, B) = xlayer2
-            ixpml = ix - ind + 1
+        if ix >= xlayer2.ib      # x right layer [ib:Nx,iz]
+            (; ib, K, A, B) = xlayer2
+            ixpml = ix - ib + 1
             psiEzx2[ixpml,iz] = B[ixpml] * psiEzx2[ixpml,iz] + A[ixpml] * dEzx
             Hy[ix,iz] += Mh * psiEzx2[ixpml,iz]
             dEzx = dEzx / K[ixpml]
         end
-        if iz <= zlayer1.ind   # z left layer [1:iz1]
+        if iz <= zlayer1.ib   # z left layer [ix,1:ib]
             (; K, A, B) = zlayer1
             izpml = iz
             psiExz1[ix,izpml] = B[izpml] * psiExz1[ix,izpml] + A[izpml] * dExz
             Hy[ix,iz] -= Mh * psiExz1[ix,izpml]
             dExz = dExz / K[izpml]
         end
-        if iz >= zlayer2.ind      # z right layer [iz1:Nz]
-            (; ind, K, A, B) = zlayer2
-            izpml = iz - ind + 1
+        if iz >= zlayer2.ib      # z right layer [ix,ib:Nz]
+            (; ib, K, A, B) = zlayer2
+            izpml = iz - ib + 1
             psiExz2[ix,izpml] = B[izpml] * psiExz2[ix,izpml] + A[izpml] * dExz
             Hy[ix,iz] -= Mh * psiExz2[ix,izpml]
             dExz = dExz / K[izpml]
@@ -573,30 +573,30 @@ end
         dHyz = (Hy[ix,iz] - Hy_izm1) / dz
 
         # apply CPML .......................................................................
-        if ix <= xlayer1.ind   # x left layer [1:ix1]
+        if ix <= xlayer1.ib   # x left layer [1:ib,iz]
             (; K, A, B) = xlayer1
             ixpml = ix
             psiHyx1[ixpml,iz] = B[ixpml] * psiHyx1[ixpml,iz] + A[ixpml] * dHyx
             Dz[ix,iz] += Md2 * psiHyx1[ixpml,iz]
             dHyx = dHyx / K[ixpml]
         end
-        if ix >= xlayer2.ind   # x right layer [ix2:Nx]
-            (; ind, K, A, B) = xlayer2
-            ixpml = ix - ind + 1
+        if ix >= xlayer2.ib   # x right layer [ib:Nx,iz]
+            (; ib, K, A, B) = xlayer2
+            ixpml = ix - ib + 1
             psiHyx2[ixpml,iz] = B[ixpml] * psiHyx2[ixpml,iz] + A[ixpml] * dHyx
             Dz[ix,iz] += Md2 * psiHyx2[ixpml,iz]
             dHyx = dHyx / K[ixpml]
         end
-        if iz <= zlayer1.ind   # z left layer [1:iz1]
+        if iz <= zlayer1.ib   # z left layer [ix,1:ib]
             (; K, A, B) = zlayer1
             izpml = iz
             psiHyz1[ix,izpml] = B[izpml] * psiHyz1[ix,izpml] + A[izpml] * dHyz
             Dx[ix,iz] -= Md2 * psiHyz1[ix,izpml]
             dHyz = dHyz / K[izpml]
         end
-        if iz >= zlayer2.ind   # z right layer [iz2:Nz]
-            (; ind, K, A, B) = zlayer2
-            izpml = iz - ind + 1
+        if iz >= zlayer2.ib   # z right layer [ix,ib:Nz]
+            (; ib, K, A, B) = zlayer2
+            izpml = iz - ib + 1
             psiHyz2[ix,izpml] = B[izpml] * psiHyz2[ix,izpml] + A[izpml] * dHyz
             Dx[ix,iz] -= Md2 * psiHyz2[ix,izpml]
             dHyz = dHyz / K[izpml]
@@ -790,7 +790,7 @@ end
 
 
         # apply CPML .......................................................................
-        if ix <= xlayer1.ind   # x left layer [1:ix1]
+        if ix <= xlayer1.ib   # x left layer [1:ib,iy,iz]
             (; K, A, B) = xlayer1
             ixpml = ix
             psiEyx1[ixpml,iy,iz] = B[ixpml] * psiEyx1[ixpml,iy,iz] + A[ixpml] * dEyx
@@ -800,9 +800,9 @@ end
             dEyx = dEyx / K[ixpml]
             dEzx = dEzx / K[ixpml]
         end
-        if ix >= xlayer2.ind   # x right layer [ix2:Nx]
-            (; ind, K, A, B) = xlayer2
-            ixpml = ix - ind + 1
+        if ix >= xlayer2.ib   # x right layer [ib:Nx,iy,iz]
+            (; ib, K, A, B) = xlayer2
+            ixpml = ix - ib + 1
             psiEyx2[ixpml,iy,iz] = B[ixpml] * psiEyx2[ixpml,iy,iz] + A[ixpml] * dEyx
             psiEzx2[ixpml,iy,iz] = B[ixpml] * psiEzx2[ixpml,iy,iz] + A[ixpml] * dEzx
             Hy[ix,iy,iz] += Mh * psiEzx2[ixpml,iy,iz]
@@ -810,7 +810,7 @@ end
             dEyx = dEyx / K[ixpml]
             dEzx = dEzx / K[ixpml]
         end
-        if iy <= ylayer1.ind   # y left layer [1:iy1]
+        if iy <= ylayer1.ib   # y left layer [ix,1:ib,iz]
             (; K, A, B) = ylayer1
             iypml = iy
             psiExy1[ix,iypml,iz] = B[iypml] * psiExy1[ix,iypml,iz] + A[iypml] * dExy
@@ -820,9 +820,9 @@ end
             dExy = dExy / K[iypml]
             dEzy = dEzy / K[iypml]
         end
-        if iy >= ylayer2.ind   # y right layer [iy2:Ny]
-            (; ind, K, A, B) = ylayer2
-            iypml = iy - ind + 1
+        if iy >= ylayer2.ib   # y right layer [ix,ib:Ny,iz]
+            (; ib, K, A, B) = ylayer2
+            iypml = iy - ib + 1
             psiExy2[ix,iypml,iz] = B[iypml] * psiExy2[ix,iypml,iz] + A[iypml] * dExy
             psiEzy2[ix,iypml,iz] = B[iypml] * psiEzy2[ix,iypml,iz] + A[iypml] * dEzy
             Hx[ix,iy,iz] -= Mh * psiEzy2[ix,iypml,iz]
@@ -830,7 +830,7 @@ end
             dExy = dExy / K[iypml]
             dEzy = dEzy / K[iypml]
         end
-        if iz <= zlayer1.ind   # z left layer [1:iz1]
+        if iz <= zlayer1.ib   # z left layer [ix,iy,1:ib]
             (; K, A, B) = zlayer1
             izpml = iz
             psiExz1[ix,iy,izpml] = B[izpml] * psiExz1[ix,iy,izpml] + A[izpml] * dExz
@@ -840,9 +840,9 @@ end
             dExz = dExz / K[izpml]
             dEyz = dEyz / K[izpml]
         end
-        if iz >= zlayer2.ind   # z right layer [iz2:Nz]
-            (; ind, K, A, B) = zlayer2
-            izpml = iz - ind + 1
+        if iz >= zlayer2.ib   # z right layer [ix,iy,ib:Nz]
+            (; ib, K, A, B) = zlayer2
+            izpml = iz - ib + 1
             psiExz2[ix,iy,izpml] = B[izpml] * psiExz2[ix,iy,izpml] + A[izpml] * dExz
             psiEyz2[ix,iy,izpml] = B[izpml] * psiEyz2[ix,iy,izpml] + A[izpml] * dEyz
             Hx[ix,iy,iz] += Mh * psiEyz2[ix,iy,izpml]
@@ -954,7 +954,7 @@ end
         dHzy = (Hz[ix,iy,iz] - Hz_iym1) / dy
 
         # apply CPML .......................................................................
-        if ix <= xlayer1.ind   # x left layer [1:ix1]
+        if ix <= xlayer1.ib   # x left layer [1:ib,iy,iz]
             (; K, A, B) = xlayer1
             ixpml = ix
             psiHyx1[ixpml,iy,iz] = B[ixpml] * psiHyx1[ixpml,iy,iz] + A[ixpml] * dHyx
@@ -964,9 +964,9 @@ end
             dHyx = dHyx / K[ixpml]
             dHzx = dHzx / K[ixpml]
         end
-        if ix >= xlayer2.ind   # x right layer [ix2:Nx]
-            (; ind, K, A, B) = xlayer2
-            ixpml = ix - ind + 1
+        if ix >= xlayer2.ib   # x right layer [ib:Nx,iy,iz]
+            (; ib, K, A, B) = xlayer2
+            ixpml = ix - ib + 1
             psiHyx2[ixpml,iy,iz] = B[ixpml] * psiHyx2[ixpml,iy,iz] + A[ixpml] * dHyx
             psiHzx2[ixpml,iy,iz] = B[ixpml] * psiHzx2[ixpml,iy,iz] + A[ixpml] * dHzx
             Dy[ix,iy,iz] -= Md2 * psiHzx2[ixpml,iy,iz]
@@ -974,7 +974,7 @@ end
             dHyx = dHyx / K[ixpml]
             dHzx = dHzx / K[ixpml]
         end
-        if iy <= ylayer1.ind   # y left layer [1:iy1]
+        if iy <= ylayer1.ib   # y left layer [ix,1:ib,iz]
             (; K, A, B) = ylayer1
             iypml = iy
             psiHxy1[ix,iypml,iz] = B[iypml] * psiHxy1[ix,iypml,iz] + A[iypml] * dHxy
@@ -984,9 +984,9 @@ end
             dHxy = dHxy / K[iypml]
             dHzy = dHzy / K[iypml]
         end
-        if iy >= ylayer2.ind   # y right layer [iy2:Ny]
-            (; ind, K, A, B) = ylayer2
-            iypml = iy - ind + 1
+        if iy >= ylayer2.ib   # y right layer [ix,ib:Ny,iz]
+            (; ib, K, A, B) = ylayer2
+            iypml = iy - ib + 1
             psiHxy2[ix,iypml,iz] = B[iypml] * psiHxy2[ix,iypml,iz] + A[iypml] * dHxy
             psiHzy2[ix,iypml,iz] = B[iypml] * psiHzy2[ix,iypml,iz] + A[iypml] * dHzy
             Dx[ix,iy,iz] += Md2 * psiHzy2[ix,iypml,iz]
@@ -994,7 +994,7 @@ end
             dHxy = dHxy / K[iypml]
             dHzy = dHzy / K[iypml]
         end
-        if iz <= zlayer1.ind   # z left layer [1:iz1]
+        if iz <= zlayer1.ib   # z left layer [ix,iy,1:ib]
             (; K, A, B) = zlayer1
             izpml = iz
             psiHxz1[ix,iy,izpml] = B[izpml] * psiHxz1[ix,iy,izpml] + A[izpml] * dHxz
@@ -1004,9 +1004,9 @@ end
             dHxz = dHxz / K[izpml]
             dHyz = dHyz / K[izpml]
         end
-        if iz >= zlayer2.ind   # z right layer [iz2:Nz]
-            (; ind, K, A, B) = zlayer2
-            izpml = iz - ind + 1
+        if iz >= zlayer2.ib   # z right layer [ix,iy,ib:Nz]
+            (; ib, K, A, B) = zlayer2
+            izpml = iz - ib + 1
             psiHxz2[ix,iy,izpml] = B[izpml] * psiHxz2[ix,iy,izpml] + A[izpml] * dHxz
             psiHyz2[ix,iy,izpml] = B[izpml] * psiHyz2[ix,iy,izpml] + A[izpml] * dHyz
             Dx[ix,iy,iz] -= Md2 * psiHyz2[ix,iy,izpml]

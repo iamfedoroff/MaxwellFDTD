@@ -44,7 +44,8 @@ end
 # PML layer
 # ******************************************************************************************
 struct PMLLayer{A}
-    ind :: Int
+    ib :: Int   # index of the PML boundary
+    Nb :: Int   # total number of grid points in the PML layer
     K :: A
     A :: A
     B :: A
@@ -62,28 +63,30 @@ function LeftPMLLayer(x, Lx, dt; kmax=1, alpha=10e-6, R0=10e-6, m=3)
     else
         xb = x[1] + Lx
         ixb = argmin(abs.(x .- xb))
-        Nxpml = ixb
+        Nxb = ixb
 
         eta0 = sqrt(MU0 / EPS0)
-        sigma_max = -(m + 1) * log(R0) / (2 * eta0 * Lx)
+        smax = -(m + 1) * log(R0) / (2 * eta0 * Lx)
 
-        sigma = zeros(Nxpml)
-        for ix=1:Nxpml
-            ixpml = ix
-            sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
-        end
-
-        kappa = zeros(Nxpml)
-        for ix=1:Nxpml
+        kappa = zeros(Nxb)
+        sigma = zeros(Nxb)
+        for ix=1:Nxb
             ixpml = ix
             kappa[ixpml] = 1 + (kmax - 1) * (abs(x[ix] - xb) / Lx)^m
+            sigma[ixpml] = smax * (abs(x[ix] - xb) / Lx)^m
         end
 
         K = kappa
         B = @. exp(-(sigma / K + alpha) * dt / EPS0)
         A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     end
-    return PMLLayer(ixb, K, A, B)
+    return PMLLayer(ixb, Nxb, K, A, B)
+end
+
+
+function LeftPMLLayer(x, Lx::CPML, dt)
+    (; thickness, kmax, alpha, R0, m) = Lx
+    return LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
 end
 
 
@@ -97,28 +100,30 @@ function RightPMLLayer(x, Lx, dt; kmax=1, alpha=10e-6, R0=10e-6, m=3)
         Nx = length(x)
         xb = x[end] - Lx
         ixb = argmin(abs.(x .- xb))
-        Nxpml = Nx - ixb + 1
+        Nxb = Nx - ixb + 1
 
         eta0 = sqrt(MU0 / EPS0)
-        sigma_max = -(m + 1) * log(R0) / (2 * eta0 * Lx)
+        smax = -(m + 1) * log(R0) / (2 * eta0 * Lx)
 
-        sigma = zeros(Nxpml)
-        for ix=ixb:Nx
-            ixpml = ix - ixb + 1
-            sigma[ixpml] = sigma_max * (abs(x[ix] - xb) / Lx)^m
-        end
-
-        kappa = zeros(Nxpml)
+        kappa = zeros(Nxb)
+        sigma = zeros(Nxb)
         for ix=ixb:Nx
             ixpml = ix - ixb + 1
             kappa[ixpml] = 1 + (kmax - 1) * (abs(x[ix] - xb) / Lx)^m
+            sigma[ixpml] = smax * (abs(x[ix] - xb) / Lx)^m
         end
 
         K = kappa
         B = @. exp(-(sigma / K + alpha) * dt / EPS0)
         A = @. sigma / (sigma * K + alpha * K^2) * (B - 1)
     end
-    return PMLLayer(ixb, K, A, B)
+    return PMLLayer(ixb, Nxb, K, A, B)
+end
+
+
+function RightPMLLayer(x, Lx::CPML, dt)
+    (; thickness, kmax, alpha, R0, m) = Lx
+    return RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
 end
 
 
@@ -140,7 +145,7 @@ end
 
 
 function PML(grid::Grid1D, pml, dt)
-    (; Nz, z) = grid
+    (; z) = grid
 
     if pml isa Real || pml isa CPML
         Lz1 = Lz2 = pml
@@ -148,23 +153,11 @@ function PML(grid::Grid1D, pml, dt)
         Lz1, Lz2 = pml
     end
 
-    if Lz1 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lz1
-        zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
-    else
-        zlayer1 = LeftPMLLayer(z, Lz1, dt)
-    end
-    Nzpml = zlayer1.ind
-    psiHyz1, psiExz1 = zeros(Nzpml), zeros(Nzpml)
+    zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    psiHyz1, psiExz1 = zeros(zlayer1.Nb), zeros(zlayer1.Nb)
 
-    if Lz2 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lz2
-        zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
-    else
-        zlayer2 = RightPMLLayer(z, Lz2, dt)
-    end
-    Nzpml = Nz - zlayer2.ind + 1
-    psiHyz2, psiExz2 = zeros(Nzpml), zeros(Nzpml)
+    zlayer2 = RightPMLLayer(z, Lz2, dt)
+    psiHyz2, psiExz2 = zeros(zlayer2.Nb), zeros(zlayer2.Nb)
 
     return PML1D(
         zlayer1, psiHyz1, psiExz1,
@@ -207,41 +200,17 @@ function PML(grid::Grid2D, pml, dt)
         Lx1, Lx2, Lz1, Lz2 = pml
     end
 
-    if Lx1 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lx1
-        xlayer1 = LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
-    else
-        xlayer1 = LeftPMLLayer(x, Lx1, dt)
-    end
-    Nxpml = xlayer1.ind
-    psiHyx1, psiEzx1 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
+    xlayer1 = LeftPMLLayer(x, Lx1, dt)
+    psiHyx1, psiEzx1 = zeros(xlayer1.Nb,Nz), zeros(xlayer1.Nb,Nz)
 
-    if Lx2 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lx2
-        xlayer2 = RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
-    else
-        xlayer2 = RightPMLLayer(x, Lx2, dt)
-    end
-    Nxpml = Nx - xlayer2.ind + 1
-    psiHyx2, psiEzx2 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
+    xlayer2 = RightPMLLayer(x, Lx2, dt)
+    psiHyx2, psiEzx2 = zeros(xlayer2.Nb,Nz), zeros(xlayer2.Nb,Nz)
 
-    if Lz1 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lz1
-        zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
-    else
-        zlayer1 = LeftPMLLayer(z, Lz1, dt)
-    end
-    Nzpml = zlayer1.ind
-    psiHyz1, psiExz1 = zeros(Nx,Nzpml), zeros(Nx,Nzpml)
+    zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    psiHyz1, psiExz1 = zeros(Nx,zlayer1.Nb), zeros(Nx,zlayer1.Nb)
 
-    if Lz2 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lz2
-        zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
-    else
-        zlayer2 = RightPMLLayer(z, Lz2, dt)
-    end
-    Nzpml = Nz - zlayer2.ind + 1
-    psiHyz2, psiExz2 = zeros(Nx,Nzpml), zeros(Nx,Nzpml)
+    zlayer2 = RightPMLLayer(z, Lz2, dt)
+    psiHyz2, psiExz2 = zeros(Nx,zlayer2.Nb), zeros(Nx,zlayer2.Nb)
 
     return PML2D(
         xlayer1, psiHyx1, psiEzx1,
@@ -306,59 +275,23 @@ function PML(grid::Grid3D, pml, dt)
         Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = pml
     end
 
-    if Lx1 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lx1
-        xlayer1 = LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
-    else
-        xlayer1 = LeftPMLLayer(x, Lx1, dt)
-    end
-    Nxpml = xlayer1.ind
-    psiHyx1, psiHzx1, psiEyx1, psiEzx1 = (zeros(Nxpml,Ny,Nz) for i=1:4)
+    xlayer1 = LeftPMLLayer(x, Lx1, dt)
+    psiHyx1, psiHzx1, psiEyx1, psiEzx1 = (zeros(xlayer1.Nb,Ny,Nz) for i=1:4)
 
-    if Lx2 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lx2
-        xlayer2 = RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
-    else
-        xlayer2 = RightPMLLayer(x, Lx2, dt)
-    end
-    Nxpml = Nx - xlayer2.ind + 1
-    psiHyx2, psiHzx2, psiEyx2, psiEzx2 = (zeros(Nxpml,Ny,Nz) for i=1:4)
+    xlayer2 = RightPMLLayer(x, Lx2, dt)
+    psiHyx2, psiHzx2, psiEyx2, psiEzx2 = (zeros(xlayer2.Nb,Ny,Nz) for i=1:4)
 
-    if Ly1 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Ly1
-        ylayer1 = LeftPMLLayer(y, thickness, dt; kmax, alpha, R0, m)
-    else
-        ylayer1 = LeftPMLLayer(y, Ly1, dt)
-    end
-    Nypml = ylayer1.ind
-    psiHxy1, psiHzy1, psiExy1, psiEzy1 = (zeros(Nx,Nypml,Nz) for i=1:4)
+    ylayer1 = LeftPMLLayer(y, Ly1, dt)
+    psiHxy1, psiHzy1, psiExy1, psiEzy1 = (zeros(Nx,ylayer1.Nb,Nz) for i=1:4)
 
-    if Ly2 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Ly2
-        ylayer2 = RightPMLLayer(y, thickness, dt; kmax, alpha, R0, m)
-    else
-        ylayer2 = RightPMLLayer(y, Ly2, dt)
-    end
-    Nypml = Ny - ylayer2.ind + 1
-    psiHxy2, psiHzy2, psiExy2, psiEzy2 = (zeros(Nx,Nypml,Nz) for i=1:4)
+    ylayer2 = RightPMLLayer(y, Ly2, dt)
+    psiHxy2, psiHzy2, psiExy2, psiEzy2 = (zeros(Nx,ylayer2.Nb,Nz) for i=1:4)
 
-    if Lz1 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lz1
-        zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
-    else
-        zlayer1 = LeftPMLLayer(z, Lz1, dt)
-    end
-    Nzpml = zlayer1.ind
-    psiHxz1, psiHyz1, psiExz1, psiEyz1 = (zeros(Nx,Ny,Nzpml) for i=1:4)
+    zlayer1 = LeftPMLLayer(z, Lz1, dt)
+    psiHxz1, psiHyz1, psiExz1, psiEyz1 = (zeros(Nx,Ny,zlayer1.Nb) for i=1:4)
 
-    if Lz2 isa CPML
-        (; thickness, kmax, alpha, R0, m) = Lz2
-        zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
-    else
-        zlayer2 = RightPMLLayer(z, Lz2, dt)
-    end
-    Nzpml = Nz - zlayer2.ind + 1
-    psiHxz2, psiHyz2, psiExz2, psiEyz2 = (zeros(Nx,Ny,Nzpml) for i=1:4)
+    zlayer2 = RightPMLLayer(z, Lz2, dt)
+    psiHxz2, psiHyz2, psiExz2, psiEyz2 = (zeros(Nx,Ny,zlayer2.Nb) for i=1:4)
 
     return PML3D(
         xlayer1, psiHyx1, psiHzx1, psiEyx1, psiEzx1,
