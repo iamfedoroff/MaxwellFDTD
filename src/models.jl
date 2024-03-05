@@ -67,7 +67,7 @@ function Model(
     end
     sources = Tuple([SourceStruct(s, field, t) for s in source])
 
-    if typeof(bc) == Symbol
+    if bc isa Symbol
         N = 2 * ndims(field.Ex)
         bcs = Tuple(bc2int(bc) for i=1:N)
     else

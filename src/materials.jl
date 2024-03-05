@@ -46,7 +46,7 @@ end
 
 function geometry2bool(geometry, grid::Grid1D)
     (; Nz, z) = grid
-    if typeof(geometry) <: Function
+    if geometry isa Function
         geometry = [Bool(geometry(z[iz])) for iz=1:Nz]
     else
         geometry = [Bool(geometry[iz]) for iz=1:Nz]
@@ -57,7 +57,7 @@ end
 
 function geometry2bool(geometry, grid::Grid2D)
     (; Nx, Nz, x, z) = grid
-    if typeof(geometry) <: Function
+    if geometry isa Function
         geometry = [Bool(geometry(x[ix],z[iz])) for ix=1:Nx, iz=1:Nz]
     else
         geometry = [Bool(geometry[ix,iz]) for ix=1:Nx, iz=1:Nz]
@@ -68,7 +68,7 @@ end
 
 function geometry2bool(geometry, grid::Grid3D)
     (; Nx, Ny, Nz, x, y, z) = grid
-    if typeof(geometry) <: Function
+    if geometry isa Function
         geometry = [Bool(geometry(x[ix],y[iy],z[iz])) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
     else
         geometry = [Bool(geometry[ix,iy,iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz]
