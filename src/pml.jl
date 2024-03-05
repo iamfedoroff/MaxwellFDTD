@@ -1,4 +1,4 @@
-struct PMLData{T}
+struct CPML{T}
     thickness :: T
     kmax :: T
     alpha :: T
@@ -36,7 +36,7 @@ impedance of free space.
 """
 function CPML(; thickness, kmax=1, alpha=10e-6, R0=10e-6, m=3)
     thickness, kmax, alpha, R0 = promote(thickness, kmax, alpha, R0)
-    return PMLData(thickness, kmax, alpha, R0, m)
+    return CPML(thickness, kmax, alpha, R0, m)
 end
 
 
@@ -142,13 +142,13 @@ end
 function PML(grid::Grid1D, pml, dt)
     (; Nz, z) = grid
 
-    if typeof(pml) <: Real
+    if pml isa Real || pml isa CPML
         Lz1 = Lz2 = pml
     else
         Lz1, Lz2 = pml
     end
 
-    if typeof(Lz1) <: PMLData
+    if Lz1 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lz1
         zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
@@ -157,7 +157,7 @@ function PML(grid::Grid1D, pml, dt)
     Nzpml = zlayer1.ind
     psiHyz1, psiExz1 = zeros(Nzpml), zeros(Nzpml)
 
-    if typeof(Lz2) <: PMLData
+    if Lz2 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lz2
         zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
@@ -201,13 +201,13 @@ end
 function PML(grid::Grid2D, pml, dt)
     (; Nx, Nz, x, z) = grid
 
-    if typeof(pml) <: Real
+    if pml isa Real || pml isa CPML
         Lx1 = Lx2 = Lz1 = Lz2 = pml
     else
         Lx1, Lx2, Lz1, Lz2 = pml
     end
 
-    if typeof(Lx1) <: PMLData
+    if Lx1 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lx1
         xlayer1 = LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
@@ -216,7 +216,7 @@ function PML(grid::Grid2D, pml, dt)
     Nxpml = xlayer1.ind
     psiHyx1, psiEzx1 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
 
-    if typeof(Lx2) <: PMLData
+    if Lx2 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lx2
         xlayer2 = RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
@@ -225,7 +225,7 @@ function PML(grid::Grid2D, pml, dt)
     Nxpml = Nx - xlayer2.ind + 1
     psiHyx2, psiEzx2 = zeros(Nxpml,Nz), zeros(Nxpml,Nz)
 
-    if typeof(Lz1) <: PMLData
+    if Lz1 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lz1
         zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
@@ -234,7 +234,7 @@ function PML(grid::Grid2D, pml, dt)
     Nzpml = zlayer1.ind
     psiHyz1, psiExz1 = zeros(Nx,Nzpml), zeros(Nx,Nzpml)
 
-    if typeof(Lz2) <: PMLData
+    if Lz2 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lz2
         zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
@@ -300,13 +300,13 @@ end
 function PML(grid::Grid3D, pml, dt)
     (; Nx, Ny, Nz, x, y, z) = grid
 
-    if typeof(pml) <: Real
+    if pml isa Real || pml isa CPML
         Lx1 = Lx2 = Ly1 = Ly2 = Lz1 = Lz2 = pml
     else
         Lx1, Lx2, Ly1, Ly2, Lz1, Lz2 = pml
     end
 
-    if typeof(Lx1) <: PMLData
+    if Lx1 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lx1
         xlayer1 = LeftPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
@@ -315,7 +315,7 @@ function PML(grid::Grid3D, pml, dt)
     Nxpml = xlayer1.ind
     psiHyx1, psiHzx1, psiEyx1, psiEzx1 = (zeros(Nxpml,Ny,Nz) for i=1:4)
 
-    if typeof(Lx2) <: PMLData
+    if Lx2 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lx2
         xlayer2 = RightPMLLayer(x, thickness, dt; kmax, alpha, R0, m)
     else
@@ -324,7 +324,7 @@ function PML(grid::Grid3D, pml, dt)
     Nxpml = Nx - xlayer2.ind + 1
     psiHyx2, psiHzx2, psiEyx2, psiEzx2 = (zeros(Nxpml,Ny,Nz) for i=1:4)
 
-    if typeof(Ly1) <: PMLData
+    if Ly1 isa CPML
         (; thickness, kmax, alpha, R0, m) = Ly1
         ylayer1 = LeftPMLLayer(y, thickness, dt; kmax, alpha, R0, m)
     else
@@ -333,7 +333,7 @@ function PML(grid::Grid3D, pml, dt)
     Nypml = ylayer1.ind
     psiHxy1, psiHzy1, psiExy1, psiEzy1 = (zeros(Nx,Nypml,Nz) for i=1:4)
 
-    if typeof(Ly2) <: PMLData
+    if Ly2 isa CPML
         (; thickness, kmax, alpha, R0, m) = Ly2
         ylayer2 = RightPMLLayer(y, thickness, dt; kmax, alpha, R0, m)
     else
@@ -342,7 +342,7 @@ function PML(grid::Grid3D, pml, dt)
     Nypml = Ny - ylayer2.ind + 1
     psiHxy2, psiHzy2, psiExy2, psiEzy2 = (zeros(Nx,Nypml,Nz) for i=1:4)
 
-    if typeof(Lz1) <: PMLData
+    if Lz1 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lz1
         zlayer1 = LeftPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
@@ -351,7 +351,7 @@ function PML(grid::Grid3D, pml, dt)
     Nzpml = zlayer1.ind
     psiHxz1, psiHyz1, psiExz1, psiEyz1 = (zeros(Nx,Ny,Nzpml) for i=1:4)
 
-    if typeof(Lz2) <: PMLData
+    if Lz2 isa CPML
         (; thickness, kmax, alpha, R0, m) = Lz2
         zlayer2 = RightPMLLayer(z, thickness, dt; kmax, alpha, R0, m)
     else
