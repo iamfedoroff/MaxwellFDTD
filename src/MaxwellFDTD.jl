@@ -12,7 +12,7 @@ import TimerOutputs: @timeit, reset_timer!, print_timer
 
 export CPU, GPU, Grid1D, Grid2D, Grid3D, SoftSource, HardSource, TFSFSource, solve!, Model,
        Material, DebyeSusceptibility, DrudeSusceptibility, LorentzSusceptibility, Plasma,
-       CPML
+       CPML, FieldMonitor
 
 
 using PhysicalConstants.CODATA2018
@@ -32,6 +32,7 @@ include("fields.jl")
 include("materials.jl")
 include("models.jl")
 include("sources.jl")
+include("monitors.jl")
 include("outputs.jl")
 
 end

@@ -148,7 +148,7 @@ specify the outputs.
     every 'dtout' time step.
 - `components::Tuple{Symbol}=nothing`: List of field components to write to the output file.
     If equal to 'nothing', then write all field components.
-- `viewpoints::Tuple{Tuple}=nothing`: List of viewpoints.
+- `monitors::Tuple{Monitor}=nothing`: List of monitors.
 - `tfsf_record::Bool=false`: If true, then write TFSF source data into a file.
 - `tfsf_fname::String=nothing`: The name of the file where to write the TFSF data.
 - `tfsf_box::Tuple=nothing`: The coordinates of the TFSF box faces.
@@ -164,7 +164,7 @@ function solve!(
     nstride=nothing,
     dtout=nothing,
     components=nothing,
-    viewpoints=nothing,
+    monitors=nothing,
     tfsf_record=false,
     tfsf_fname=nothing,
     tfsf_box=nothing,
@@ -176,7 +176,7 @@ function solve!(
     model = adapt(backend, model)
     (; Nt, dt, t) = model
 
-    out = Output(model; fname, nstride, nframes, dtout, components, viewpoints)
+    out = Output(model; fname, nstride, nframes, dtout, components, monitors)
 
     if tfsf_record
         if isnothing(tfsf_fname)
@@ -210,7 +210,7 @@ function solve!(
                 write_fields(out, model)
                 out.itout += 1
             end
-            write_viewpoints(out, model, it)
+            update_monitors!(out, model, it)
             calculate_output_variables!(out, model)
             if CUDA.functional()
                 synchronize()
@@ -226,6 +226,7 @@ function solve!(
         end
     end
 
+    write_monitors(out, model)
     write_output_variables(out, model)
 
     print_timer()

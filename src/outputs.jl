@@ -1,4 +1,4 @@
-mutable struct Output{S, R, C, I, A1, A2}
+mutable struct Output{S, R, C, M, A1, A2}
     fname :: S
     isgeometry :: Bool
     # Fields data:
@@ -7,12 +7,39 @@ mutable struct Output{S, R, C, I, A1, A2}
     Ntout :: Int
     tout :: R
     components :: C
-    # View points data:
-    isviewpoints :: Bool
-    ipts :: I   # coordinates of the view points
+    # Monitors:
+    ismonitors :: Bool
+    monitors :: M
     # Output variables data:
     Sa :: A1   # averaged poynting vector
     E2 :: A2   # averaged E^2
+end
+
+
+function update_monitors!(out, model, it)
+    (; ismonitors, monitors) = out
+    (; field) = model
+    if ismonitors
+        for monitor in monitors
+            update_monitor!(monitor, field, it)
+        end
+    end
+    return nothing
+end
+
+
+function write_monitors(out, model)
+    (; fname, ismonitors, monitors) = out
+    (; t) = model
+    if ismonitors
+        HDF5.h5open(fname, "r+") do fp
+            fp["monitors/t"] = collect(t)
+            for (n, monitor) in enumerate(monitors)
+                write_monitor(fp, n, monitor)
+            end
+        end
+    end
+    return nothing
 end
 
 
@@ -39,7 +66,7 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    components=nothing, viewpoints=nothing,
+    components=nothing, monitors=nothing,
 ) where F <: Field1D
     (; field, geometry, materials, Nt, t) = model
     (; grid, Ex) = field
@@ -81,19 +108,13 @@ function Output(
         end
     end
 
-    if isnothing(viewpoints)
-        isviewpoints = false
-        ipts = nothing
+    if isnothing(monitors)
+        ismonitors = false
+        monitors = nothing
     else
-        isviewpoints = true
-        Np = length(viewpoints)
-        ipts = Vector{CartesianIndices}(undef, Np)
-        for (n, pt) in enumerate(viewpoints)
-            zpt = pt
-            izpt = argmin(abs.(z .- zpt))
-            ipts[n] = CartesianIndices((izpt:izpt,))
-        end
-        ipts = (ipts...,)   # Vector -> Tuple
+        ismonitors = true
+        monitors = monitors isa Monitor ? (monitors,) : monitors   # convert to array-like
+        monitors = [Monitor(monitor, grid, t) for monitor in monitors]
     end
 
     T = eltype(Ex)
@@ -116,26 +137,14 @@ function Output(
                 HDF5.create_dataset(group, "rho", T, (Nz, Ntout))
             end
         end
-        if isviewpoints
-            fp["viewpoints/t"] = collect(t)
-            for n=1:Np
-                group = HDF5.create_group(fp, "viewpoints/$n")
-                group["point"] = collect(promote(viewpoints[n]...))
-                HDF5.create_dataset(group, "Hy", T, (Nt,))
-                HDF5.create_dataset(group, "Ex", T, (Nt,))
-                if isplasma
-                    HDF5.create_dataset(group, "rho", T, (Nt,))
-                end
-            end
-        end
     end
 
     Sa = zero(Ex)
     E2 = isgeometry ? zero(Ex) : nothing
 
     return Output(
-        fname, isgeometry, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa,
-        E2,
+        fname, isgeometry, isfields, itout, Ntout, tout, components, ismonitors, monitors,
+        Sa, E2,
     )
 end
 
@@ -165,29 +174,6 @@ function write_fields(out, model::Model{F}) where F <: Field1D
 end
 
 
-function write_viewpoints(out, model::Model{F}, it) where F <: Field1D
-    (; fname, isgeometry, isviewpoints, ipts) = out
-    (; field, materials) = model
-    (; Hy, Ex) = field
-    if isviewpoints
-        HDF5.h5open(fname, "r+") do fp
-            for (n, ipt) in enumerate(ipts)
-                group = fp["viewpoints/$n"]
-                group["Hy"][it] = collect(Hy[ipt])
-                group["Ex"][it] = collect(Ex[ipt])
-                if isgeometry
-                    (; isplasma, rho, rho0) = materials[1]
-                    if isplasma
-                        group["rho"][it] = collect(rho[ipt]) * rho0
-                    end
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-
 function calculate_output_variables!(out, model::Model{F}) where F <: Field1D
     (; isgeometry, Sa, E2) = out
     (; field, dt) = model
@@ -205,7 +191,7 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    components=nothing, viewpoints=nothing,
+    components=nothing, monitors=nothing,
 ) where F <: Field2D
     (; field, geometry, materials, Nt, t) = model
     (; grid, Ex) = field
@@ -247,20 +233,13 @@ function Output(
         end
     end
 
-    if isnothing(viewpoints)
-        isviewpoints = false
-        ipts = nothing
+    if isnothing(monitors)
+        ismonitors = false
+        monitors = nothing
     else
-        isviewpoints = true
-        Np = length(viewpoints)
-        ipts = Vector{CartesianIndices}(undef, Np)
-        for (n, pt) in enumerate(viewpoints)
-            xpt, zpt = pt
-            ixpt = argmin(abs.(x .- xpt))
-            izpt = argmin(abs.(z .- zpt))
-            ipts[n] = CartesianIndices((ixpt:ixpt, izpt:izpt))
-        end
-        ipts = (ipts...,)   # Vector -> Tuple
+        ismonitors = true
+        monitors = monitors isa Monitor ? (monitors,) : monitors   # convert to array-like
+        monitors = [Monitor(monitor, grid, t) for monitor in monitors]
     end
 
     T = eltype(Ex)
@@ -287,27 +266,14 @@ function Output(
                 HDF5.create_dataset(group, "rho", T, (Nx, Nz, Ntout))
             end
         end
-        if isviewpoints
-            fp["viewpoints/t"] = collect(t)
-            for n=1:Np
-                group = HDF5.create_group(fp, "viewpoints/$n")
-                group["point"] = collect(promote(viewpoints[n]...))
-                HDF5.create_dataset(group, "Hy", T, (Nt,))
-                HDF5.create_dataset(group, "Ex", T, (Nt,))
-                HDF5.create_dataset(group, "Ez", T, (Nt,))
-                if isplasma
-                    HDF5.create_dataset(group, "rho", T, (Nt,))
-                end
-            end
-        end
     end
 
     Sa = zero(Ex)
     E2 = isgeometry ? zero(Ex) : nothing
 
     return Output(
-        fname, isgeometry, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa,
-        E2,
+        fname, isgeometry, isfields, itout, Ntout, tout, components, ismonitors, monitors,
+        Sa, E2,
     )
 end
 
@@ -340,30 +306,6 @@ function write_fields(out, model::Model{F}) where F <: Field2D
 end
 
 
-function write_viewpoints(out, model::Model{F}, it) where F <: Field2D
-    (; fname, isgeometry, isviewpoints, ipts) = out
-    (; field, materials) = model
-    (; Hy, Ex, Ez) = field
-    if isviewpoints
-        HDF5.h5open(fname, "r+") do fp
-            for (n, ipt) in enumerate(ipts)
-                group = fp["viewpoints/$n"]
-                group["Hy"][it] = collect(Hy[ipt])
-                group["Ex"][it] = collect(Ex[ipt])
-                group["Ez"][it] = collect(Ez[ipt])
-                if isgeometry
-                    (; isplasma, rho, rho0) = materials[1]
-                    if isplasma
-                        group["rho"][it] = collect(rho[ipt]) * rho0
-                    end
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-
 function calculate_output_variables!(out, model::Model{F}) where F <: Field2D
     (; isgeometry, Sa, E2) = out
     (; field, dt) = model
@@ -381,7 +323,7 @@ end
 # ******************************************************************************************
 function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
-    components=nothing, viewpoints=nothing,
+    components=nothing, monitors=nothing,
 ) where F <: Field3D
     (; field, geometry, materials, Nt, t) = model
     (; grid, Ex) = field
@@ -424,21 +366,13 @@ function Output(
         end
     end
 
-    if isnothing(viewpoints)
-        isviewpoints = false
-        ipts = nothing
+    if isnothing(monitors)
+        ismonitors = false
+        monitors = nothing
     else
-        isviewpoints = true
-        Np = length(viewpoints)
-        ipts = Vector{CartesianIndices}(undef, Np)
-        for (n, pt) in enumerate(viewpoints)
-            xpt, ypt, zpt = pt
-            ixpt = argmin(abs.(x .- xpt))
-            iypt = argmin(abs.(y .- ypt))
-            izpt = argmin(abs.(z .- zpt))
-            ipts[n] = CartesianIndices((ixpt:ixpt, iypt:iypt, izpt:izpt))
-        end
-        ipts = (ipts...,)   # Vector -> Tuple
+        ismonitors = true
+        monitors = monitors isa Monitor ? (monitors,) : monitors   # convert to array-like
+        monitors = [Monitor(monitor, grid, t) for monitor in monitors]
     end
 
     T = eltype(Ex)
@@ -475,30 +409,14 @@ function Output(
                 HDF5.create_dataset(group, "rho", T, (Nx, Ny, Nz, Ntout))
             end
         end
-        if isviewpoints
-            fp["viewpoints/t"] = collect(t)
-            for n=1:Np
-                group = HDF5.create_group(fp, "viewpoints/$n")
-                group["point"] = collect(promote(viewpoints[n]...))
-                HDF5.create_dataset(group, "Hx", T, (Nt,))
-                HDF5.create_dataset(group, "Hy", T, (Nt,))
-                HDF5.create_dataset(group, "Hz", T, (Nt,))
-                HDF5.create_dataset(group, "Ex", T, (Nt,))
-                HDF5.create_dataset(group, "Ey", T, (Nt,))
-                HDF5.create_dataset(group, "Ez", T, (Nt,))
-                if isplasma
-                    HDF5.create_dataset(group, "rho", T, (Nt,))
-                end
-            end
-        end
     end
 
     Sa = zero(Ex)
     E2 = isgeometry ? zero(Ex) : nothing
 
     return Output(
-        fname, isgeometry, isfields, itout, Ntout, tout, components, isviewpoints, ipts, Sa,
-        E2,
+        fname, isgeometry, isfields, itout, Ntout, tout, components, ismonitors, monitors,
+        Sa, E2,
     )
 end
 
@@ -532,33 +450,6 @@ function write_fields(out, model::Model{F}) where F <: Field3D
                 (; isplasma, rho, rho0) = materials[1]
                 if isplasma
                     group["rho"][:,:,:,itout] = collect(rho) * rho0
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-
-function write_viewpoints(out, model::Model{F}, it) where F <: Field3D
-    (; fname, isgeometry, isviewpoints, ipts) = out
-    (; field, materials) = model
-    (; Hx, Hy, Hz, Ex, Ey, Ez) = field
-    if isviewpoints
-        HDF5.h5open(fname, "r+") do fp
-            for (n, ipt) in enumerate(ipts)
-                group = fp["viewpoints/$n"]
-                group["Hx"][it] = collect(Hx[ipt])
-                group["Hy"][it] = collect(Hy[ipt])
-                group["Hz"][it] = collect(Hz[ipt])
-                group["Ex"][it] = collect(Ex[ipt])
-                group["Ey"][it] = collect(Ey[ipt])
-                group["Ez"][it] = collect(Ez[ipt])
-                if isgeometry
-                    (; isplasma, rho, rho0) = materials[1]
-                    if isplasma
-                        group["rho"][it] = collect(rho[ipt]) * rho0
-                    end
                 end
             end
         end
