@@ -18,7 +18,7 @@ Material location and properties.
 # Keywords
 - `geometry::Union{Function,AbstractArray}`: Function of grid coordinates (or the
     corresponding array) which defines the loccation of material in space: the material is
-    present at any point where the value of geometry in true.
+    present at any point where the value of geometry is true.
 - `eps::Real=1`: Permittivity.
 - `mu::Real=1`: Permeability.
 - `sigma::Real=0`: Conductivity.
