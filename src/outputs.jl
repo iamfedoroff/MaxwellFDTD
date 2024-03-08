@@ -68,7 +68,7 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, monitors=nothing,
 ) where F <: Field1D
-    (; field, geometry, materials, Nt, t) = model
+    (; field, geometry, materials, t) = model
     (; grid, Ex) = field
     (; Nz, z) = grid
 
@@ -193,7 +193,7 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, monitors=nothing,
 ) where F <: Field2D
-    (; field, geometry, materials, Nt, t) = model
+    (; field, geometry, materials, t) = model
     (; grid, Ex) = field
     (; Nx, Nz, x, z) = grid
 
@@ -325,7 +325,7 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, monitors=nothing,
 ) where F <: Field3D
-    (; field, geometry, materials, Nt, t) = model
+    (; field, geometry, materials, t) = model
     (; grid, Ex) = field
     (; Nx, Ny, Nz, x, y, z) = grid
 
