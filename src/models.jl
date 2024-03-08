@@ -211,7 +211,7 @@ function solve!(
                 out.itout += 1
             end
             update_monitors!(out, model, it)
-            calculate_output_variables!(out, model)
+            update_integral_variables!(out, model)
             if CUDA.functional()
                 synchronize()
             end
@@ -227,7 +227,7 @@ function solve!(
     end
 
     write_monitors(out, model)
-    write_output_variables(out, model)
+    write_integral_variables(out, model)
 
     print_timer()
 

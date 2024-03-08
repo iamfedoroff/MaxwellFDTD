@@ -10,7 +10,7 @@ mutable struct Output{S, R, C, M, A1, A2}
     # Monitors:
     ismonitors :: Bool
     monitors :: M
-    # Output variables data:
+    # Integral variables:
     Sa :: A1   # averaged poynting vector
     E2 :: A2   # averaged E^2
 end
@@ -43,7 +43,7 @@ function write_monitors(out, model)
 end
 
 
-function write_output_variables(out, model)
+function write_integral_variables(out, model)
     (; materials) = model
     (; isgeometry, fname, Sa, E2) = out
     HDF5.h5open(fname, "r+") do fp
@@ -174,7 +174,7 @@ function write_fields(out, model::Model{F}) where F <: Field1D
 end
 
 
-function calculate_output_variables!(out, model::Model{F}) where F <: Field1D
+function update_integral_variables!(out, model::Model{F}) where F <: Field1D
     (; isgeometry, Sa, E2) = out
     (; field, dt) = model
     (; Hy, Ex) = field
@@ -306,7 +306,7 @@ function write_fields(out, model::Model{F}) where F <: Field2D
 end
 
 
-function calculate_output_variables!(out, model::Model{F}) where F <: Field2D
+function update_integral_variables!(out, model::Model{F}) where F <: Field2D
     (; isgeometry, Sa, E2) = out
     (; field, dt) = model
     (; Hy, Ex, Ez) = field
@@ -458,7 +458,7 @@ function write_fields(out, model::Model{F}) where F <: Field3D
 end
 
 
-function calculate_output_variables!(out, model::Model{F}) where F <: Field3D
+function update_integral_variables!(out, model::Model{F}) where F <: Field3D
     (; isgeometry, Sa, E2) = out
     (; field, dt) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
