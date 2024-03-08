@@ -226,7 +226,7 @@ function solve!(
         end
     end
 
-    write_monitors(out, model)
+    write_monitors(out)
     write_integral_variables(out, model)
 
     print_timer()

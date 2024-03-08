@@ -28,12 +28,10 @@ function update_monitors!(out, model, it)
 end
 
 
-function write_monitors(out, model)
+function write_monitors(out)
     (; fname, ismonitors, monitors) = out
-    (; t) = model
     if ismonitors
         HDF5.h5open(fname, "r+") do fp
-            fp["monitors/t"] = collect(t)
             for (n, monitor) in enumerate(monitors)
                 write_monitor(fp, n, monitor)
             end
@@ -121,6 +119,7 @@ function Output(
 
     HDF5.h5open(fname, "w") do fp
         fp["z"] = collect(z)
+        fp["t"] = collect(t)
         if isgeometry
             fp["geometry"] = collect(geometry)
         end
@@ -247,6 +246,7 @@ function Output(
     HDF5.h5open(fname, "w") do fp
         fp["x"] = collect(x)
         fp["z"] = collect(z)
+        fp["t"] = collect(t)
         if isgeometry
             fp["geometry"] = collect(geometry)
         end
@@ -381,6 +381,7 @@ function Output(
         fp["x"] = collect(x)
         fp["y"] = collect(y)
         fp["z"] = collect(z)
+        fp["t"] = collect(t)
         if isgeometry
             fp["geometry"] = collect(geometry)
         end
