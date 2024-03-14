@@ -66,7 +66,7 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, monitors=nothing,
 ) where F <: Field1D
-    (; field, geometry, materials, t) = model
+    (; field, pml, geometry, materials, t) = model
     (; grid, Ex) = field
     (; Nz, z) = grid
 
@@ -117,9 +117,12 @@ function Output(
 
     T = eltype(Ex)
 
+    ipml = [pml.zlayer1.ib, pml.zlayer2.ib]
+
     HDF5.h5open(fname, "w") do fp
         fp["z"] = collect(z)
         fp["t"] = collect(t)
+        fp["pml"] = ipml
         if isgeometry
             fp["geometry"] = collect(geometry)
         end
@@ -192,7 +195,7 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, monitors=nothing,
 ) where F <: Field2D
-    (; field, geometry, materials, t) = model
+    (; field, pml, geometry, materials, t) = model
     (; grid, Ex) = field
     (; Nx, Nz, x, z) = grid
 
@@ -243,10 +246,16 @@ function Output(
 
     T = eltype(Ex)
 
+    ipml = [
+        pml.xlayer1.ib, pml.xlayer2.ib,
+        pml.zlayer1.ib, pml.zlayer2.ib,
+    ]
+
     HDF5.h5open(fname, "w") do fp
         fp["x"] = collect(x)
         fp["z"] = collect(z)
         fp["t"] = collect(t)
+        fp["pml"] = ipml
         if isgeometry
             fp["geometry"] = collect(geometry)
         end
@@ -325,7 +334,7 @@ function Output(
     model::Model{F}; fname="out.hdf", nstride=nothing, nframes=nothing, dtout=nothing,
     components=nothing, monitors=nothing,
 ) where F <: Field3D
-    (; field, geometry, materials, t) = model
+    (; field, pml, geometry, materials, t) = model
     (; grid, Ex) = field
     (; Nx, Ny, Nz, x, y, z) = grid
 
@@ -377,11 +386,18 @@ function Output(
 
     T = eltype(Ex)
 
+    ipml = [
+        pml.xlayer1.ib, pml.xlayer2.ib,
+        pml.ylayer1.ib, pml.ylayer2.ib,
+        pml.zlayer1.ib, pml.zlayer2.ib,
+    ]
+
     HDF5.h5open(fname, "w") do fp
         fp["x"] = collect(x)
         fp["y"] = collect(y)
         fp["z"] = collect(z)
         fp["t"] = collect(t)
+        fp["pml"] = ipml
         if isgeometry
             fp["geometry"] = collect(geometry)
         end
