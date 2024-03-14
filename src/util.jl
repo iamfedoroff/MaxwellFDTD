@@ -44,6 +44,13 @@ function geometry2indices(geometry::Function, grid::Grid1D)
 end
 
 
+function geometry2indices(geometry::Tuple, grid::Grid1D)
+    zg, = geometry
+    iz = argmin(abs.(grid.z .- zg))
+    return [CartesianIndex(iz)]
+end
+
+
 # ------------------------------------------------------------------------------------------
 function geometry2indices(geometry, grid::Grid2D)
     (; Nx, Nz) = grid
@@ -54,6 +61,14 @@ end
 function geometry2indices(geometry::Function, grid::Grid2D)
     (; Nx, Nz, x, z) = grid
     return [CartesianIndex(ix,iz) for ix=1:Nx, iz=1:Nz if geometry(x[ix],z[iz])]
+end
+
+
+function geometry2indices(geometry::Tuple, grid::Grid2D)
+    xg, zg = geometry
+    ix = argmin(abs.(grid.x .- xg))
+    iz = argmin(abs.(grid.z .- zg))
+    return [CartesianIndex(ix,iz)]
 end
 
 
@@ -73,4 +88,13 @@ function geometry2indices(geometry::Function, grid::Grid3D)
         CartesianIndex(ix,iy,iz) for ix=1:Nx, iy=1:Ny, iz=1:Nz
         if geometry(x[ix],y[iy],z[iz])
     ]
+end
+
+
+function geometry2indices(geometry::Tuple, grid::Grid3D)
+    xg, yg, zg = geometry
+    ix = argmin(abs.(grid.x .- xg))
+    iy = argmin(abs.(grid.y .- yg))
+    iz = argmin(abs.(grid.z .- zg))
+    return [CartesianIndex(ix,iy,iz)]
 end
