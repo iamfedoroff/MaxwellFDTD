@@ -1,8 +1,7 @@
 module MaxwellFDTD
 
 import Adapt: adapt_storage, @adapt_structure, adapt
-import CUDA: CUDA, CuArray, @cuda, launch_configuration, synchronize, threadIdx,
-             blockIdx, blockDim, gridDim
+import CUDA: CUDA, CuArray, synchronize
 import HDF5
 import Interpolations: linear_interpolation, Flat
 import KernelAbstractions: KernelAbstractions, @index, @kernel, get_backend
