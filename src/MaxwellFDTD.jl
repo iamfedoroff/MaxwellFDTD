@@ -24,7 +24,7 @@ const HBAR = ReducedPlanckConstant.val
 
 CUDA.allowscalar(false)
 
-include("gpu.jl")
+include("backends.jl")
 include("grids.jl")
 include("pml.jl")
 include("fields.jl")
