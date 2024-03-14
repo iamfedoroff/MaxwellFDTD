@@ -1171,30 +1171,6 @@ function time_step(grid::Grid3D, CN)
 end
 
 
-"""
-https://julialang.org/blog/2016/02/iteration/#a_multidimensional_boxcar_filter
-"""
-function moving_average(A::AbstractArray, m::Int)
-    if eltype(A) == Int
-        out = zeros(size(A))
-    else
-        out = similar(A)
-    end
-    R = CartesianIndices(A)
-    Ifirst, Ilast = first(R), last(R)
-    I1 = div(m,2) * oneunit(Ifirst)
-    for I in R
-        n, s = 0, zero(eltype(out))
-        for J in max(Ifirst, I-I1):min(Ilast, I+I1)
-            s += A[J]
-            n += 1
-        end
-        out[I] = s/n
-    end
-    return out
-end
-
-
 function bc2int(bc)
     if bc == :periodic
         bc = 1

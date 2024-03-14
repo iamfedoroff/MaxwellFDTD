@@ -875,24 +875,3 @@ function write_tfsf_record(model::Model{F}, source, it) where F <: Field3D
     end
     return nothing
 end
-
-
-# ******************************************************************************************
-# Util
-# ******************************************************************************************
-function geometry2indices(geometry, grid::Grid1D)
-    (; Nz, z) = grid
-    return findall([geometry(z[iz]) for iz=1:Nz])
-end
-
-
-function geometry2indices(geometry, grid::Grid2D)
-    (; Nx, Nz, x, z) = grid
-    return findall([geometry(x[ix], z[iz]) for ix=1:Nx, iz=1:Nz])
-end
-
-
-function geometry2indices(geometry, grid::Grid3D)
-    (; Nx, Ny, Nz, x, y, z) = grid
-    return findall([geometry(x[ix], y[iy], z[iz]) for ix=1:Nx, iy=1:Ny, iz=1:Nz])
-end
