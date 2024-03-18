@@ -34,15 +34,15 @@ function Monitor(monitor::FieldMonitor, grid::Grid1D, t)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
     Nt = length(t)
-    Hy, Ex = (zeros(Nt) for i=1:2)
+    Hy, Ex = (zeros(length(inds), Nt) for i=1:2)
     return FieldMonitor1D(inds, Hy, Ex)
 end
 
 
 function update_monitor!(monitor::FieldMonitor1D, field, it)
     (; inds, Hy, Ex) = monitor
-    Hy[it] = @views sum(field.Hy[inds])
-    Ex[it] = @views sum(field.Ex[inds])
+    Hy[:,it] .= collect(field.Hy[inds])
+    Ex[:,it] .= collect(field.Ex[inds])
     return nothing
 end
 
@@ -71,16 +71,16 @@ function Monitor(monitor::FieldMonitor, grid::Grid2D, t)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
     Nt = length(t)
-    Hy, Ex, Ez = (zeros(Nt) for i=1:3)
+    Hy, Ex, Ez = (zeros(length(inds), Nt) for i=1:3)
     return FieldMonitor2D(inds, Hy, Ex, Ez)
 end
 
 
 function update_monitor!(monitor::FieldMonitor2D, field, it)
     (; inds, Hy, Ex, Ez) = monitor
-    Hy[it] = @views sum(field.Hy[inds])
-    Ex[it] = @views sum(field.Ex[inds])
-    Ez[it] = @views sum(field.Ez[inds])
+    Hy[:,it] .= collect(field.Hy[inds])
+    Ex[:,it] .= collect(field.Ex[inds])
+    Ez[:,it] .= collect(field.Ez[inds])
     return nothing
 end
 
@@ -113,19 +113,19 @@ function Monitor(monitor::FieldMonitor, grid::Grid3D, t)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
     Nt = length(t)
-    Hx, Hy, Hz, Ex, Ey, Ez = (zeros(Nt) for i=1:6)
+    Hx, Hy, Hz, Ex, Ey, Ez = (zeros(length(inds), Nt) for i=1:6)
     return FieldMonitor3D(inds, Hx, Hy, Hz, Ex, Ey, Ez)
 end
 
 
 function update_monitor!(monitor::FieldMonitor3D, field, it)
     (; inds, Hx, Hy, Hz, Ex, Ey, Ez) = monitor
-    Hx[it] = @views sum(field.Hx[inds])
-    Hy[it] = @views sum(field.Hy[inds])
-    Hz[it] = @views sum(field.Hz[inds])
-    Ex[it] = @views sum(field.Ex[inds])
-    Ey[it] = @views sum(field.Ey[inds])
-    Ez[it] = @views sum(field.Ez[inds])
+    Hx[:,it] .= collect(field.Hx[inds])
+    Hy[:,it] .= collect(field.Hy[inds])
+    Hz[:,it] .= collect(field.Hz[inds])
+    Ex[:,it] .= collect(field.Ex[inds])
+    Ey[:,it] .= collect(field.Ey[inds])
+    Ez[:,it] .= collect(field.Ez[inds])
     return nothing
 end
 
