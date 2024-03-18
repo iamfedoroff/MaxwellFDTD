@@ -108,7 +108,6 @@ function Output(
 
     if isnothing(monitors)
         ismonitors = false
-        monitors = nothing
     else
         ismonitors = true
         monitors = monitors isa Monitor ? (monitors,) : monitors   # convert to array-like
@@ -237,7 +236,6 @@ function Output(
 
     if isnothing(monitors)
         ismonitors = false
-        monitors = nothing
     else
         ismonitors = true
         monitors = monitors isa Monitor ? (monitors,) : monitors   # convert to array-like
@@ -377,7 +375,6 @@ function Output(
 
     if isnothing(monitors)
         ismonitors = false
-        monitors = nothing
     else
         ismonitors = true
         monitors = monitors isa Monitor ? (monitors,) : monitors   # convert to array-like
