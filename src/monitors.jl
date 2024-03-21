@@ -199,16 +199,33 @@ struct SpectralMonitor{G, T1, T2} <: Monitor
     geometry :: G
     wmin :: T1
     wmax :: T2
+    issum :: Bool
 end
 
 
-function SpectralMonitor(geometry; wmin=nothing, wmax=nothing)
-    return SpectralMonitor(geometry, wmin, wmax)
+"""
+SpectralMonitor(geometry; sum=false)
+
+Spectral monitor records the spectrum of fields in a given area of space.
+
+# Arguments
+- `geometry::Union{Function,AbstractArray}`: Function of grid coordinates (or the
+    corresponding array) which defines an area of space in which the monitor records the
+    spectra of the field components: the area consists of spatial points for which the value
+    of geometry is true.
+
+# Keywords
+- `sum::Bool=false`: If false, then record the spectra in each spatial point independently.
+    If true, then sum the spectra from different spatial points.
+"""
+function SpectralMonitor(geometry; wmin=nothing, wmax=nothing, sum=false)
+    return SpectralMonitor(geometry, wmin, wmax, sum)
 end
 
 
 # ******************************************************************************************
 struct SpectralMonitor1D{C, D, T, A}
+    issum :: Bool
     inds :: C
     dft :: D
     t :: T
@@ -218,14 +235,18 @@ end
 
 
 function Monitor(monitor::SpectralMonitor, grid::Grid1D, t)
-    (; geometry, wmin, wmax) = monitor
+    (; geometry, wmin, wmax, issum) = monitor
     inds = geometry2indices(geometry, grid)
     if isempty(inds)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
-    dft = DFT(t; wmin, wmax)
-    Hy, Ex = (zeros(ComplexF64, dft.Nw) for i=1:2)
-    return SpectralMonitor1D(inds, dft, t, Hy, Ex)
+    dft = DFT(t; wmin, wmax, sum=issum)
+    if issum
+        Hy, Ex = (zeros(ComplexF64, dft.Nw) for i=1:2)
+    else
+        Hy, Ex = (zeros(ComplexF64, length(inds), dft.Nw) for i=1:2)
+    end
+    return SpectralMonitor1D(issum, inds, dft, t, Hy, Ex)
 end
 
 
@@ -238,17 +259,18 @@ end
 
 
 function write_monitor(fp, n, monitor::SpectralMonitor1D)
-    (; dft) = monitor
+    fp["monitors/$n/issum"] = monitor.issum
     fp["monitors/$n/inds"] = monitor.inds
-    fp["monitors/$n/w"] = dft.w
-    fp["monitors/$n/Hy"] = 2 * monitor.Hy * dft.dt
-    fp["monitors/$n/Ex"] = 2 * monitor.Ex * dft.dt
+    fp["monitors/$n/w"] = monitor.dft.w
+    fp["monitors/$n/Hy"] = monitor.Hy
+    fp["monitors/$n/Ex"] = monitor.Ex
     return nothing
 end
 
 
 # ******************************************************************************************
 struct SpectralMonitor2D{C, D, T, A}
+    issum :: Bool
     inds :: C
     dft :: D
     t :: T
@@ -259,14 +281,18 @@ end
 
 
 function Monitor(monitor::SpectralMonitor, grid::Grid2D, t)
-    (; geometry, wmin, wmax) = monitor
+    (; geometry, wmin, wmax, issum) = monitor
     inds = geometry2indices(geometry, grid)
     if isempty(inds)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
-    dft = DFT(t; wmin, wmax)
-    Hy, Ex, Ez = (zeros(ComplexF64, dft.Nw) for i=1:3)
-    return SpectralMonitor2D(inds, dft, t, Hy, Ex, Ez)
+    dft = DFT(t; wmin, wmax, sum=issum)
+    if issum
+        Hy, Ex, Ez = (zeros(ComplexF64, dft.Nw) for i=1:3)
+    else
+        Hy, Ex, Ez = (zeros(ComplexF64, length(inds), dft.Nw) for i=1:3)
+    end
+    return SpectralMonitor2D(issum, inds, dft, t, Hy, Ex, Ez)
 end
 
 
@@ -280,18 +306,19 @@ end
 
 
 function write_monitor(fp, n, monitor::SpectralMonitor2D)
-    (; dft) = monitor
+    fp["monitors/$n/issum"] = monitor.issum
     fp["monitors/$n/inds"] = monitor.inds
-    fp["monitors/$n/w"] = dft.w
-    fp["monitors/$n/Hy"] = 2 * monitor.Hy * dft.dt
-    fp["monitors/$n/Ex"] = 2 * monitor.Ex * dft.dt
-    fp["monitors/$n/Ez"] = 2 * monitor.Ez * dft.dt
+    fp["monitors/$n/w"] = monitor.dft.w
+    fp["monitors/$n/Hy"] = monitor.Hy
+    fp["monitors/$n/Ex"] = monitor.Ex
+    fp["monitors/$n/Ez"] = monitor.Ez
     return nothing
 end
 
 
 # ******************************************************************************************
 struct SpectralMonitor3D{C, D, T, A}
+    issum :: Bool
     inds :: C
     dft :: D
     t :: T
@@ -305,14 +332,18 @@ end
 
 
 function Monitor(monitor::SpectralMonitor, grid::Grid3D, t)
-    (; geometry, wmin, wmax) = monitor
+    (; geometry, wmin, wmax, issum) = monitor
     inds = geometry2indices(geometry, grid)
     if isempty(inds)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
-    dft = DFT(t; wmin, wmax)
-    Hx, Hy, Hz, Ex, Ey, Ez = (zeros(ComplexF64, dft.Nw) for i=1:6)
-    return SpectralMonitor3D(inds, dft, t, Hx, Hy, Hz, Ex, Ey, Ez)
+    dft = DFT(t; wmin, wmax, sum=issum)
+    if issum
+        Hx, Hy, Hz, Ex, Ey, Ez = (zeros(ComplexF64, dft.Nw) for i=1:6)
+    else
+        Hx, Hy, Hz, Ex, Ey, Ez = (zeros(ComplexF64, length(inds), dft.Nw) for i=1:6)
+    end
+    return SpectralMonitor3D(issum, inds, dft, t, Hx, Hy, Hz, Ex, Ey, Ez)
 end
 
 
@@ -329,14 +360,14 @@ end
 
 
 function write_monitor(fp, n, monitor::SpectralMonitor3D)
-    (; dft) = monitor
+    fp["monitors/$n/issum"] = monitor.issum
     fp["monitors/$n/inds"] = monitor.inds
-    fp["monitors/$n/w"] = dft.w
-    fp["monitors/$n/Hx"] = 2 * monitor.Hx * dft.dt
-    fp["monitors/$n/Hy"] = 2 * monitor.Hy * dft.dt
-    fp["monitors/$n/Hz"] = 2 * monitor.Hz * dft.dt
-    fp["monitors/$n/Ex"] = 2 * monitor.Ex * dft.dt
-    fp["monitors/$n/Ey"] = 2 * monitor.Ey * dft.dt
-    fp["monitors/$n/Ez"] = 2 * monitor.Ez * dft.dt
+    fp["monitors/$n/w"] = monitor.dft.w
+    fp["monitors/$n/Hx"] = monitor.Hx
+    fp["monitors/$n/Hy"] = monitor.Hy
+    fp["monitors/$n/Hz"] = monitor.Hz
+    fp["monitors/$n/Ex"] = monitor.Ex
+    fp["monitors/$n/Ey"] = monitor.Ey
+    fp["monitors/$n/Ez"] = monitor.Ez
     return nothing
 end

@@ -3,10 +3,11 @@ struct DFT{A, T}
     w :: A
     tshift :: T
     dt :: T
+    issum :: Bool
 end
 
 
-function DFT(t; wmin=nothing, wmax=nothing)
+function DFT(t; wmin=nothing, wmax=nothing, sum=false)
     Nt = length(t)
     dt = t[2] - t[1]
 
@@ -19,14 +20,32 @@ function DFT(t; wmin=nothing, wmax=nothing)
     w = w[iwmin:iwmax]
     Nw = length(w)
 
-    return DFT(Nw, w, tshift, dt)
+    return DFT(Nw, w, tshift, dt, sum)
 end
 
 
 function (dft::DFT)(S, F, t)
-    (; tshift, w) = dft
+    (; w, tshift, dt) = dft
     @inbounds for iw in eachindex(w)
-        S[iw] += sum(F * exp(-1im * w[iw] * (t - tshift)))
+        S[iw] += 2 * F * exp(-1im * w[iw] * (t - tshift)) * dt
+    end
+    return nothing
+end
+
+
+function (dft::DFT)(S, F::AbstractArray, t)
+    (; w, tshift, dt, issum) = dft
+    if issum
+        @inbounds for iw in eachindex(w)
+            S[iw] += 2 * sum(F * exp(-1im * w[iw] * (t - tshift))) * dt
+        end
+    else
+        @inbounds for iw in eachindex(w)
+            tmp = 2 * exp(-1im * w[iw] * (t - tshift)) * dt
+            for j in eachindex(F)
+                S[j,iw] += F[j] * tmp
+            end
+        end
     end
     return nothing
 end
