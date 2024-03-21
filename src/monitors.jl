@@ -4,23 +4,36 @@ abstract type Monitor end
 # ******************************************************************************************
 # Field monitors
 # ******************************************************************************************
-"""
-FieldMonitor{G} <: Monitor
-
-Field monitor accumulates fields in a given area of space
-
-# Fields
-- `geometry::G<:Function`: Function of grid coordinates (or the corresponding array) which
-    defines an area of space in which the monitor accumulates the components of the field:
-    the area consists of spatial points for which the value of geometry is true.
-"""
 struct FieldMonitor{G} <: Monitor
     geometry :: G
+    issum :: Bool
 end
+
+
+"""
+FieldMonitor(geometry; sum=false)
+
+Field monitor records the fields in time for a given area of space.
+
+# Arguments
+- `geometry::Union{Function,AbstractArray}`: Function of grid coordinates (or the
+    corresponding array) which defines an area of space in which the monitor records the
+    components of the field: the area consists of spatial points for which the value of
+    geometry is true.
+
+# Keywords
+- `sum::Bool=false`: If false, then record the field in each spatial point independently. If
+    true, then sum the fields from different spatial points.
+"""
+function FieldMonitor(geometry; sum=false)
+    return FieldMonitor(geometry, sum)
+end
+
 
 
 # ******************************************************************************************
 struct FieldMonitor1D{C, A}
+    issum :: Bool
     inds :: C
     Hy :: A
     Ex :: A
@@ -28,26 +41,36 @@ end
 
 
 function Monitor(monitor::FieldMonitor, grid::Grid1D, t)
-    (; geometry) = monitor
+    (; geometry, issum) = monitor
     inds = geometry2indices(geometry, grid)
     if isempty(inds)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
     Nt = length(t)
-    Hy, Ex = (zeros(length(inds), Nt) for i=1:2)
-    return FieldMonitor1D(inds, Hy, Ex)
+    if issum
+        Hy, Ex = (zeros(Nt) for i=1:2)
+    else
+        Hy, Ex = (zeros(length(inds), Nt) for i=1:2)
+    end
+    return FieldMonitor1D(issum, inds, Hy, Ex)
 end
 
 
 function update_monitor!(monitor::FieldMonitor1D, field, it)
-    (; inds, Hy, Ex) = monitor
-    Hy[:,it] .= collect(field.Hy[inds])
-    Ex[:,it] .= collect(field.Ex[inds])
+    (; issum, inds, Hy, Ex) = monitor
+    if issum
+        Hy[it] = @views sum(field.Hy[inds])
+        Ex[it] = @views sum(field.Ex[inds])
+    else
+        Hy[:,it] .= collect(field.Hy[inds])
+        Ex[:,it] .= collect(field.Ex[inds])
+    end
     return nothing
 end
 
 
 function write_monitor(fp, n, monitor::FieldMonitor1D)
+    fp["monitors/$n/issum"] = monitor.issum
     fp["monitors/$n/inds"] = monitor.inds
     fp["monitors/$n/Hy"] = monitor.Hy
     fp["monitors/$n/Ex"] = monitor.Ex
@@ -57,6 +80,7 @@ end
 
 # ******************************************************************************************
 struct FieldMonitor2D{C, A}
+    issum :: Bool
     inds :: C
     Hy :: A
     Ex :: A
@@ -65,27 +89,38 @@ end
 
 
 function Monitor(monitor::FieldMonitor, grid::Grid2D, t)
-    (; geometry) = monitor
+    (; geometry, issum) = monitor
     inds = geometry2indices(geometry, grid)
     if isempty(inds)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
     Nt = length(t)
-    Hy, Ex, Ez = (zeros(length(inds), Nt) for i=1:3)
-    return FieldMonitor2D(inds, Hy, Ex, Ez)
+    if issum
+        Hy, Ex, Ez = (zeros(Nt) for i=1:3)
+    else
+        Hy, Ex, Ez = (zeros(length(inds), Nt) for i=1:3)
+    end
+    return FieldMonitor2D(issum, inds, Hy, Ex, Ez)
 end
 
 
 function update_monitor!(monitor::FieldMonitor2D, field, it)
-    (; inds, Hy, Ex, Ez) = monitor
-    Hy[:,it] .= collect(field.Hy[inds])
-    Ex[:,it] .= collect(field.Ex[inds])
-    Ez[:,it] .= collect(field.Ez[inds])
+    (; issum, inds, Hy, Ex, Ez) = monitor
+    if issum
+        Hy[it] = @views sum(field.Hy[inds])
+        Ex[it] = @views sum(field.Ex[inds])
+        Ez[it] = @views sum(field.Ez[inds])
+    else
+        Hy[:,it] .= collect(field.Hy[inds])
+        Ex[:,it] .= collect(field.Ex[inds])
+        Ez[:,it] .= collect(field.Ez[inds])
+    end
     return nothing
 end
 
 
 function write_monitor(fp, n, monitor::FieldMonitor2D)
+    fp["monitors/$n/issum"] = monitor.issum
     fp["monitors/$n/inds"] = monitor.inds
     fp["monitors/$n/Hy"] = monitor.Hy
     fp["monitors/$n/Ex"] = monitor.Ex
@@ -96,6 +131,7 @@ end
 
 # ******************************************************************************************
 struct FieldMonitor3D{C, A}
+    issum :: Bool
     inds :: C
     Hx :: A
     Hy :: A
@@ -107,30 +143,44 @@ end
 
 
 function Monitor(monitor::FieldMonitor, grid::Grid3D, t)
-    (; geometry) = monitor
+    (; geometry, issum) = monitor
     inds = geometry2indices(geometry, grid)
     if isempty(inds)
         error("I did not find any grid points which satisfy your monitor geometry.")
     end
     Nt = length(t)
-    Hx, Hy, Hz, Ex, Ey, Ez = (zeros(length(inds), Nt) for i=1:6)
-    return FieldMonitor3D(inds, Hx, Hy, Hz, Ex, Ey, Ez)
+    if issum
+        Hx, Hy, Hz, Ex, Ey, Ez = (zeros(Nt) for i=1:6)
+    else
+        Hx, Hy, Hz, Ex, Ey, Ez = (zeros(length(inds), Nt) for i=1:6)
+    end
+    return FieldMonitor3D(issum, inds, Hx, Hy, Hz, Ex, Ey, Ez)
 end
 
 
 function update_monitor!(monitor::FieldMonitor3D, field, it)
-    (; inds, Hx, Hy, Hz, Ex, Ey, Ez) = monitor
-    Hx[:,it] .= collect(field.Hx[inds])
-    Hy[:,it] .= collect(field.Hy[inds])
-    Hz[:,it] .= collect(field.Hz[inds])
-    Ex[:,it] .= collect(field.Ex[inds])
-    Ey[:,it] .= collect(field.Ey[inds])
-    Ez[:,it] .= collect(field.Ez[inds])
+    (; issum, inds, Hx, Hy, Hz, Ex, Ey, Ez) = monitor
+    if issum
+        Hx[it] = @views sum(field.Hx[inds])
+        Hy[it] = @views sum(field.Hy[inds])
+        Hz[it] = @views sum(field.Hz[inds])
+        Ex[it] = @views sum(field.Ex[inds])
+        Ey[it] = @views sum(field.Ey[inds])
+        Ez[it] = @views sum(field.Ez[inds])
+    else
+        Hx[:,it] .= collect(field.Hx[inds])
+        Hy[:,it] .= collect(field.Hy[inds])
+        Hz[:,it] .= collect(field.Hz[inds])
+        Ex[:,it] .= collect(field.Ex[inds])
+        Ey[:,it] .= collect(field.Ey[inds])
+        Ez[:,it] .= collect(field.Ez[inds])
+    end
     return nothing
 end
 
 
 function write_monitor(fp, n, monitor::FieldMonitor3D)
+    fp["monitors/$n/issum"] = monitor.issum
     fp["monitors/$n/inds"] = monitor.inds
     fp["monitors/$n/Hx"] = monitor.Hx
     fp["monitors/$n/Hy"] = monitor.Hy
