@@ -1,4 +1,4 @@
-grid = Grid2D(
+grid = Grid(
     xmin=-55e-6, xmax=55e-6, Nx=11,
     zmin=-5e-6, zmax=55e-6, Nz=1101,
 )

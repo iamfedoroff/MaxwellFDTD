@@ -1,4 +1,4 @@
-grid = Grid3D(
+grid = Grid(
     xmin=-55e-6, xmax=55e-6, Nx=11,
     ymin=-55e-6, ymax=55e-6, Ny=11,
     zmin=-5e-6, zmax=55e-6, Nz=801,

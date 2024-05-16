@@ -1,4 +1,4 @@
-grid = Grid1D(zmin=-5e-6, zmax=55e-6, Nz=2001)
+grid = Grid(zmin=-5e-6, zmax=55e-6, Nz=2001)
 
 function waveform(z, t)
     lam0 = 2e-6   # (m) wavelength

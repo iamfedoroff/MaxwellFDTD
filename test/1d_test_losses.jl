@@ -18,7 +18,7 @@ end
 
 
 # ******************************************************************************************
-grid = Grid1D(zmin=-15e-6, zmax=25e-6, Nz=2001)
+grid = Grid(zmin=-15e-6, zmax=25e-6, Nz=2001)
 
 function source_geometry(z)
     return abs(z - -10e-6) <= grid.dz/2
