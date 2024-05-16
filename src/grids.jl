@@ -1,6 +1,101 @@
 abstract type Grid end
 
 
+"""
+    Grid(;
+        xmin=nothing, xmax=nothing, Nx=nothing,
+        ymin=nothing, ymax=nothing, Ny=nothing,
+        zmin, zmax, Nz,
+    )
+
+Create a 1-D, 2-D, or 3-D grid depending on the set of keyword arguments.
+
+# Keywords
+- `xmin::Real=nothing`: Minimum x value in meters.
+- `xmax::Real=nothing`: Maximum x value in meters.
+- `Nx::Int=nothing`: Number of x points.
+- `ymin::Real=nothing`: Minimum y value in meters.
+- `ymax::Real=nothing`: Maximum y value in meters.
+- `Ny::Int=nothing`: Number of y points.
+- `zmin::Real`: Minimum z value in meters.
+- `zmax::Real`: Maximum z value in meters.
+- `Nz::Int`: Number of z points.
+
+---
+
+    Grid(; zmin, zmax, Nz)
+
+If defined only (zmin, zmax, Nz), then create a 1-D grid in z coordinate:
+
+    +-------------+
+    zmin   z   zmax
+
+---
+
+    Grid(; xmin, xmax, Nx, zmin, zmax, Nz)
+
+If defined (xmin, xmax, Nx) and (zmin, zmax, Nz), then create a 2-D grid in (x,z)
+coordinates:
+
+    xmax +-------------+
+         |             |
+       x |             |
+         |             |
+    xmin +-------------+
+         zmin   z   zmax
+
+---
+
+    Grid(; xmin, xmax, Nx, ymin, ymax, Ny, zmin, zmax, Nz)
+
+If defined all (xmin, xmax, Nx), (ymin, ymax, Ny), and (xmin, xmax, Nx), then create a
+3-D grid in (x,y,z) coordinates:
+
+             +-------------+
+            /             /|
+           /             / |
+          /             /  |
+    zmax +-------------+   + xmax
+         |             |  /
+       z |             | / x
+         |             |/
+    zmin +-------------+ xmin
+         ymax   y   ymin
+"""
+function Grid(;
+    xmin=nothing, xmax=nothing, Nx=nothing,
+    ymin=nothing, ymax=nothing, Ny=nothing,
+    zmin, zmax, Nz,
+)
+    xargs = (xmin, xmax, Nx)
+    yargs = (ymin, ymax, Ny)
+    if all(isnothing.(xargs)) && all(isnothing.(yargs))
+        grid = Grid1D(; zmin, zmax, Nz)
+    elseif all(i->!i, isnothing.(xargs)) && all(isnothing.(yargs))
+        grid = Grid2D(; xmin, xmax, Nx, zmin, zmax, Nz)
+    elseif all(i->!i, isnothing.(xargs)) && all(i->!i, isnothing.(yargs))
+        grid = Grid3D(; xmin, xmax, Nx, ymin, ymax, Ny, zmin, zmax, Nz)
+    else
+        error(
+            """
+            Wrong set of arguments.
+                   To create a grid you need to define the following variables:
+                   1-D grid:
+                       zmin, zmax, Nz
+                   2-D grid:
+                       xmin, xmax, Nx
+                       zmin, zmax, Nz
+                   3-D grid:
+                       xmin, xmax, Nx
+                       ymin, ymax, Ny
+                       zmin, zmax, Nz\
+            """
+        )
+    end
+    return grid
+end
+
+
 # ******************************************************************************
 # 1D: d/dx = d/dy = 0
 # ******************************************************************************

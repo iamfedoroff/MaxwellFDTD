@@ -9,9 +9,9 @@ import ProgressMeter: @showprogress
 import TimerOutputs: @timeit, reset_timer!, print_timer
 
 
-export CPU, GPU, Grid1D, Grid2D, Grid3D, SoftSource, HardSource, TFSFSource, solve!, Model,
-       Material, DebyeSusceptibility, DrudeSusceptibility, LorentzSusceptibility, Plasma,
-       CPML, FieldMonitor, SpectralMonitor
+export CPU, GPU, Grid, Grid1D, Grid2D, Grid3D, SoftSource, HardSource, TFSFSource, solve!,
+       Model, Material, DebyeSusceptibility, DrudeSusceptibility, LorentzSusceptibility,
+       Plasma, CPML, FieldMonitor, SpectralMonitor
 
 
 using PhysicalConstants.CODATA2018
