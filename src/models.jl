@@ -1,4 +1,4 @@
-struct Model{F, S, B, P, G, M, T, R}
+struct Model{F, S, B, P, G, M, T, R, A}
     field :: F
     sources :: S
     bcs :: B
@@ -14,6 +14,8 @@ struct Model{F, S, B, P, G, M, T, R}
     Me :: T
     Md1 :: T
     Md2 :: T
+    # Output arrays:
+    JE :: A   # delivered energy
 end
 
 @adapt_structure Model
@@ -111,7 +113,12 @@ function Model(
     Md1 = 1.0
     Md2 = dt
 
-    return Model(field, sources, bcs, pml, geometry, materials, Nt, dt, t, Mh, Me, Md1, Md2)
+    isplasma = any([material.isplasma for material in materials])
+    JE = isplasma ? zero(field.Ex) : zeros(1)
+
+    return Model(
+        field, sources, bcs, pml, geometry, materials, Nt, dt, t, Mh, Me, Md1, Md2, JE,
+    )
 end
 
 
@@ -301,7 +308,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field1D
-    (; field, bcs, pml, geometry, materials, dt) = model
+    (; field, bcs, pml, geometry, materials, dt, JE) = model
     (; grid, Hy, Dx, Ex) = field
     (; Nz, dz) = grid
     (; zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -403,6 +410,11 @@ end
                 rho[iz] = R1/R12*1 - (R1/R12*1 - rho[iz]) * exp(-R12 * dt)
             end
             drho[iz] = R1 * (1 - rho[iz])
+
+            # delivered energy:
+            # need to calculate it before the E update to have J and E at the same time step
+            Jx = (Ppx[iz] - oldPpx2[iz]) / (2 * dt)
+            JE[iz] += Jx * Ex[iz] * dt
         end
 
         # update E .........................................................................
@@ -525,7 +537,7 @@ end
 
 
 @kernel function update_E_kernel!(model::Model{F}) where F <: Field2D
-    (; field, bcs, pml, geometry, materials, dt) = model
+    (; field, bcs, pml, geometry, materials, dt, JE) = model
     (; grid, Hy, Dx, Dz, Ex, Ez) = field
     (; Nx, Nz, dx, dz) = grid
     (; xlayer1, psiHyx1, xlayer2, psiHyx2, zlayer1, psiHyz1, zlayer2, psiHyz2) = pml
@@ -674,6 +686,12 @@ end
                 rho[ix,iz] = R1/R12*1 - (R1/R12*1 - rho[ix,iz]) * exp(-R12 * dt)
             end
             drho[ix,iz] = R1 * (1 - rho[ix,iz])
+
+            # delivered energy:
+            # need to calculate it before the E update to have J and E at the same time step
+            Jx = (Ppx[ix,iz] - oldPpx2[ix,iz]) / (2 * dt)
+            Jz = (Ppz[ix,iz] - oldPpz2[ix,iz]) / (2 * dt)
+            JE[ix,iz] += (Jx * Ex[ix,iz] + Jz * Ez[ix,iz]) * dt
         end
 
         # update E .........................................................................
@@ -875,7 +893,7 @@ end
 # here we pass the parameters of the model explicitly:
 # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
 @kernel function update_E_kernel!(
-    field::Field3D, bcs, pml, geometry, materials, dt, Me0, Md10, Md20,
+    field::Field3D, bcs, pml, geometry, materials, dt, Me0, Md10, Md20, JE,
 )
     (; grid, Hx, Hy, Hz, Dx, Dy, Dz, Ex, Ey, Ez) = field
     (; Nx, Ny, Nz, dx, dy, dz) = grid
@@ -1105,6 +1123,13 @@ end
                 rho[ix,iy,iz] = R1/R12*1 - (R1/R12*1 - rho[ix,iy,iz]) * exp(-R12 * dt)
             end
             drho[ix,iy,iz] = R1 * (1 - rho[ix,iy,iz])
+
+            # delivered energy:
+            # need to calculate it before the E update to have J and E at the same time step
+            Jx = (Ppx[ix,iy,iz] - oldPpx2[ix,iy,iz]) / (2 * dt)
+            Jy = (Ppy[ix,iy,iz] - oldPpy2[ix,iy,iz]) / (2 * dt)
+            Jz = (Ppz[ix,iy,iz] - oldPpz2[ix,iy,iz]) / (2 * dt)
+            JE[ix,iy,iz] += (Jx * Ex[ix,iy,iz] + Jy * Ey[ix,iy,iz] + Jz * Ez[ix,iy,iz]) * dt
         end
 
         # update E .........................................................................
@@ -1142,9 +1167,9 @@ function update_E!(model::Model{F}) where F <: Field3D
     # In order to avoid the issue caused by the large size of the CUDA kernel parameters,
     # here we pass the parameters of the model explicitly:
     # https://discourse.julialang.org/t/passing-too-long-tuples-into-cuda-kernel-causes-an-error
-    (; field, bcs, pml, geometry, materials, dt, Me, Md1, Md2) = model
+    (; field, bcs, pml, geometry, materials, dt, Me, Md1, Md2, JE) = model
     update_E_kernel!(backend)(
-        field, bcs, pml, geometry, materials, dt, Me, Md1, Md2; ndrange,
+        field, bcs, pml, geometry, materials, dt, Me, Md1, Md2, JE; ndrange,
     )
     return nothing
 end

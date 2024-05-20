@@ -42,7 +42,7 @@ end
 
 
 function write_integral_variables(out, model)
-    (; materials) = model
+    (; materials, JE) = model
     (; isgeometry, fname, Sa, E2) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Sa"] = collect(Sa)   # averaged poynting vector
@@ -52,6 +52,7 @@ function write_integral_variables(out, model)
             (; isplasma, rho, rho0) = materials[1]
             if isplasma
                 fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
+                fp["JE"] = collect(JE)
             end
         end
     end
