@@ -1,6 +1,7 @@
-mutable struct Output{S, R, C, M, A1, A2}
+mutable struct Output{S, R, C, M, A1, A2, A3}
     fname :: S
     isgeometry :: Bool
+    isplasma :: Bool
     # Fields data:
     isfields :: Bool
     itout :: Int
@@ -13,6 +14,7 @@ mutable struct Output{S, R, C, M, A1, A2}
     # Integral variables:
     Sa :: A1   # averaged poynting vector
     E2 :: A2   # averaged E^2
+    rho :: A3   # plasma density over all materials
 end
 
 
@@ -43,15 +45,18 @@ end
 
 function write_integral_variables(out, model)
     (; materials, JE) = model
-    (; isgeometry, fname, Sa, E2) = out
+    (; isgeometry, isplasma, fname, Sa, E2, rho) = out
     HDF5.h5open(fname, "r+") do fp
         fp["Sa"] = collect(Sa)   # averaged poynting vector
         if isgeometry
             fp["E2"] = collect(E2)   # averaged E^2
 
-            (; isplasma, rho, rho0) = materials[1]
             if isplasma
-                fp["rho_end"] = collect(rho) * rho0   # final plasma distribution
+                @. rho = 0
+                for mat in materials
+                    rho .= rho .+ collect(mat.rho) .* mat.rho0
+                end
+                fp["rho_end"] = rho   # final plasma distribution
                 fp["JE"] = collect(JE)
             end
         end
@@ -72,11 +77,7 @@ function Output(
     (; Nz, z) = grid
 
     isgeometry = any(x -> x > 0, geometry)
-
     isplasma = any([material.isplasma for material in materials])
-    if isplasma && length(materials) > 1
-        @warn "The electron density is written only for the first material!"
-    end
 
     if !isdir(dirname(fname))
         mkpath(dirname(fname))
@@ -143,16 +144,17 @@ function Output(
 
     Sa = zero(Ex)
     E2 = isgeometry ? zero(Ex) : nothing
+    rho = isplasma ? zeros(size(Ex)) : nothing
 
     return Output(
-        fname, isgeometry, isfields, itout, Ntout, tout, components, ismonitors, monitors,
-        Sa, E2,
+        fname, isgeometry, isplasma, isfields, itout, Ntout, tout, components, ismonitors,
+        monitors, Sa, E2, rho,
     )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field1D
-    (; fname, isgeometry, isfields, itout, components) = out
+    (; fname, isplasma, isfields, itout, components, rho) = out
     (; field, materials) = model
     (; Hy, Ex) = field
     if isfields
@@ -164,11 +166,12 @@ function write_fields(out, model::Model{F}) where F <: Field1D
             if :Ex in components
                 group["Ex"][:,itout] = collect(Ex)
             end
-            if isgeometry
-                (; isplasma, rho, rho0) = materials[1]
-                if isplasma
-                    group["rho"][:,itout] = collect(rho) * rho0
+            if isplasma
+                @. rho = 0
+                for mat in materials
+                    rho .= rho .+ collect(mat.rho) .* mat.rho0
                 end
+                group["rho"][:,itout] = rho
             end
         end
     end
@@ -200,11 +203,7 @@ function Output(
     (; Nx, Nz, x, z) = grid
 
     isgeometry = any(x -> x > 0, geometry)
-
     isplasma = any([material.isplasma for material in materials])
-    if isplasma && length(materials) > 1
-        @warn "The electron density is written only for the first material!"
-    end
 
     if !isdir(dirname(fname))
         mkpath(dirname(fname))
@@ -278,16 +277,17 @@ function Output(
 
     Sa = zero(Ex)
     E2 = isgeometry ? zero(Ex) : nothing
+    rho = isplasma ? zeros(size(Ex)) : nothing
 
     return Output(
-        fname, isgeometry, isfields, itout, Ntout, tout, components, ismonitors, monitors,
-        Sa, E2,
+        fname, isgeometry, isplasma, isfields, itout, Ntout, tout, components, ismonitors,
+        monitors, Sa, E2, rho,
     )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field2D
-    (; fname, isgeometry, isfields, itout, components) = out
+    (; fname, isplasma, isfields, itout, components, rho) = out
     (; field, materials) = model
     (; Hy, Ex, Ez) = field
     if isfields
@@ -302,11 +302,12 @@ function write_fields(out, model::Model{F}) where F <: Field2D
             if :Ez in components
                 group["Ez"][:,:,itout] = collect(Ez)
             end
-            if isgeometry
-                (; isplasma, rho, rho0) = materials[1]
-                if isplasma
-                    group["rho"][:,:,itout] = collect(rho) * rho0
+            if isplasma
+                @. rho = 0
+                for mat in materials
+                    rho .= rho .+ collect(mat.rho) .* mat.rho0
                 end
+                group["rho"][:,:,itout] = rho
             end
         end
     end
@@ -338,11 +339,7 @@ function Output(
     (; Nx, Ny, Nz, x, y, z) = grid
 
     isgeometry = any(x -> x > 0, geometry)
-
     isplasma = any([material.isplasma for material in materials])
-    if isplasma && length(materials) > 1
-        @warn "The electron density is written only for the first material!"
-    end
 
     if !isdir(dirname(fname))
         mkpath(dirname(fname))
@@ -428,16 +425,17 @@ function Output(
 
     Sa = zero(Ex)
     E2 = isgeometry ? zero(Ex) : nothing
+    rho = isplasma ? zeros(size(Ex)) : nothing
 
     return Output(
-        fname, isgeometry, isfields, itout, Ntout, tout, components, ismonitors, monitors,
-        Sa, E2,
+        fname, isgeometry, isplasma, isfields, itout, Ntout, tout, components, ismonitors,
+        monitors, Sa, E2, rho,
     )
 end
 
 
 function write_fields(out, model::Model{F}) where F <: Field3D
-    (; fname, isgeometry, isfields, itout, components) = out
+    (; fname, isplasma, isfields, itout, components, rho) = out
     (; field, materials) = model
     (; Hx, Hy, Hz, Ex, Ey, Ez) = field
     if isfields
@@ -461,11 +459,12 @@ function write_fields(out, model::Model{F}) where F <: Field3D
             if :Ez in components
                 group["Ez"][:,:,:,itout] = collect(Ez)
             end
-            if isgeometry
-                (; isplasma, rho, rho0) = materials[1]
-                if isplasma
-                    group["rho"][:,:,:,itout] = collect(rho) * rho0
+            if isplasma
+                @. rho = 0
+                for mat in materials
+                    rho .= rho .+ collect(mat.rho) .* mat.rho0
                 end
+                group["rho"][:,:,:,itout] = rho
             end
         end
     end
